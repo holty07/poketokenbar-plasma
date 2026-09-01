@@ -226,6 +226,7 @@ class Daemon:
 
 
 def main() -> int:
+    from .providers.antigravity import AntigravityProvider
     from .providers.claude import ClaudeProvider
     from .providers.codex import CodexProvider
 
@@ -235,7 +236,11 @@ def main() -> int:
         state_path=state.default_path(),
         config_path=config.default_path(),
         cache=cache,
-        providers=[ClaudeProvider(cache=cache), CodexProvider(cache=cache)],
+        providers=[
+            ClaudeProvider(cache=cache),
+            CodexProvider(cache=cache),
+            AntigravityProvider(cache=cache),
+        ],
         limits_source=LimitsSource(),
         companion_store=CompanionStore(
             api=PokeAPI(), sprite_store=SpriteStore()
