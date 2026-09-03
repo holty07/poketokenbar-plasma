@@ -15,12 +15,13 @@ MouseArea {
     Layout.preferredWidth: row.implicitWidth
     onClicked: root.expanded = !root.expanded
 
+    // Catppuccin Mocha — matches the status colors used in the full popup.
     function levelColor(level) {
         if (level === "crit")
-            return Kirigami.Theme.negativeTextColor;
+            return "#f38ba8";
         if (level === "warn")
-            return Kirigami.Theme.neutralTextColor;
-        return Kirigami.Theme.positiveTextColor;
+            return "#fab387";
+        return "#a6e3a1";
     }
 
     RowLayout {

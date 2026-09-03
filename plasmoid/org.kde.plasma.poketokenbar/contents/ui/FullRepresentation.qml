@@ -48,25 +48,41 @@ PlasmaExtras.Representation {
     property int dexPage: 0
     readonly property int dexPageSize: 24
 
+    // Catppuccin Mocha — used for progress bars, badges, and status colors so
+    // they stay legible regardless of the desktop's own color scheme.
+    readonly property color ctpBase: "#1e1e2e"
+    readonly property color ctpSurface0: "#313244"
+    readonly property color ctpSurface1: "#45475a"
+    readonly property color ctpOverlay0: "#6c7086"
+    readonly property color ctpText: "#cdd6f4"
+    readonly property color ctpRed: "#f38ba8"
+    readonly property color ctpPeach: "#fab387"
+    readonly property color ctpYellow: "#f9e2af"
+    readonly property color ctpGreen: "#a6e3a1"
+    readonly property color ctpTeal: "#94e2d5"
+    readonly property color ctpSapphire: "#74c7ec"
+    readonly property color ctpBlue: "#89b4fa"
+    readonly property color ctpMauve: "#cba6f7"
+
     Layout.minimumWidth: Kirigami.Units.gridUnit * 24
     Layout.minimumHeight: Kirigami.Units.gridUnit * 28
 
     function levelColor(pct) {
         if (pct >= 95)
-            return Kirigami.Theme.negativeTextColor;
+            return full.ctpRed;
         if (pct >= 80)
-            return Kirigami.Theme.neutralTextColor;
-        return Kirigami.Theme.positiveTextColor;
+            return full.ctpPeach;
+        return full.ctpGreen;
     }
 
     function rarityColor(r) {
         if (r === "legendary")
-            return "#d4a017";
+            return full.ctpYellow;
         if (r === "rare")
-            return "#3d8bfd";
+            return full.ctpBlue;
         if (r === "uncommon")
-            return "#3fb950";
-        return "#8b949e";
+            return full.ctpGreen;
+        return full.ctpOverlay0;
     }
 
     function resetIn(iso) {
@@ -170,8 +186,8 @@ PlasmaExtras.Representation {
                         implicitHeight: celebrationCol.implicitHeight + Kirigami.Units.largeSpacing
                         radius: Kirigami.Units.smallSpacing
                         color: full.celebration && full.celebration.kind === "shiny"
-                               ? "#8a6d1f"
-                               : Kirigami.Theme.highlightColor
+                               ? full.ctpYellow
+                               : full.ctpMauve
 
                         ColumnLayout {
                             id: celebrationCol
@@ -184,12 +200,12 @@ PlasmaExtras.Representation {
                                       ? (full.celebration.kind === "shiny" ? "✨ " : "")
                                         + full.celebration.title
                                       : ""
-                                color: "white"
+                                color: full.ctpBase
                                 font.bold: true
                             }
                             PlasmaComponents.Label {
                                 text: full.celebration ? full.celebration.detail : ""
-                                color: "white"
+                                color: full.ctpBase
                                 opacity: 0.9
                                 wrapMode: Text.Wrap
                                 Layout.fillWidth: true
@@ -251,7 +267,7 @@ PlasmaExtras.Representation {
                                         id: rarityLabel
                                         anchors.centerIn: parent
                                         text: full.companion ? full.companion.rarity.toUpperCase() : ""
-                                        color: "white"
+                                        color: full.ctpBase
                                         font.pointSize: Kirigami.Theme.smallFont.pointSize
                                         font.bold: true
                                     }
@@ -271,7 +287,7 @@ PlasmaExtras.Representation {
                                 opacity: 0.8
                             }
 
-                            PlasmaComponents.ProgressBar {
+                            CatppuccinProgressBar {
                                 Layout.fillWidth: true
                                 from: 0
                                 to: 1
@@ -280,6 +296,8 @@ PlasmaExtras.Representation {
                                           ? full.companion.egg_progress
                                           : full.companion.stage_progress)
                                        : 0
+                                fillColor: full.ctpSapphire
+                                trackColor: full.ctpSurface0
                             }
 
                             PlasmaComponents.Label {
@@ -335,7 +353,7 @@ PlasmaExtras.Representation {
                                     height: width
                                     radius: width / 2
                                     visible: modelData.current
-                                    color: Kirigami.Theme.highlightColor
+                                    color: full.ctpMauve
                                 }
                             }
                         }
@@ -495,11 +513,13 @@ PlasmaExtras.Representation {
                                 }
                             }
 
-                            PlasmaComponents.ProgressBar {
+                            CatppuccinProgressBar {
                                 Layout.fillWidth: true
                                 from: 0
                                 to: 100
                                 value: modelData.w.utilization
+                                fillColor: full.levelColor(modelData.w.utilization)
+                                trackColor: full.ctpSurface0
                             }
 
                             RowLayout {
@@ -515,7 +535,7 @@ PlasmaExtras.Representation {
                                 PlasmaComponents.Label {
                                     visible: text.length > 0
                                     opacity: 0.9
-                                    color: Kirigami.Theme.neutralTextColor
+                                    color: full.ctpPeach
                                     text: {
                                         var b = full.burn[modelData.kind];
                                         if (!b || !b.eta_text)
@@ -544,8 +564,8 @@ PlasmaExtras.Representation {
                             PlasmaComponents.Label {
                                 text: full.providerStatus[modelData].label
                                 color: full.providerStatus[modelData].severity === "crit"
-                                       ? Kirigami.Theme.negativeTextColor
-                                       : Kirigami.Theme.neutralTextColor
+                                       ? full.ctpRed
+                                       : full.ctpPeach
                                 font.bold: true
                             }
                         }
@@ -631,7 +651,7 @@ PlasmaExtras.Representation {
                                             id: badgeLabel
                                             anchors.centerIn: parent
                                             text: modelData.badge
-                                            color: "white"
+                                            color: full.ctpBase
                                             font.pointSize: Kirigami.Theme.smallFont.pointSize
                                             font.bold: true
                                         }
@@ -811,7 +831,7 @@ PlasmaExtras.Representation {
                                         Rectangle {
                                             visible: modelData.is_raising === true
                                             radius: height / 2
-                                            color: Kirigami.Theme.highlightColor
+                                            color: full.ctpSapphire
                                             implicitWidth: raisingTag.implicitWidth + 6
                                             implicitHeight: raisingTag.implicitHeight + 2
 
@@ -819,7 +839,7 @@ PlasmaExtras.Representation {
                                                 id: raisingTag
                                                 anchors.centerIn: parent
                                                 text: i18n("RAISING")
-                                                color: "white"
+                                                color: full.ctpBase
                                                 font.pointSize: Kirigami.Theme.smallFont.pointSize
                                                 font.bold: true
                                             }
@@ -916,7 +936,7 @@ PlasmaExtras.Representation {
                                                 id: logRarity
                                                 anchors.centerIn: parent
                                                 text: modelData.rarity.toUpperCase()
-                                                color: "white"
+                                                color: full.ctpBase
                                                 font.pointSize: Kirigami.Theme.smallFont.pointSize
                                                 font.bold: true
                                             }
@@ -925,7 +945,7 @@ PlasmaExtras.Representation {
                                         Rectangle {
                                             visible: modelData.raising
                                             radius: height / 2
-                                            color: Kirigami.Theme.highlightColor
+                                            color: full.ctpSapphire
                                             implicitWidth: raisingLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
                                             implicitHeight: raisingLabel.implicitHeight + 2
 
@@ -933,7 +953,7 @@ PlasmaExtras.Representation {
                                                 id: raisingLabel
                                                 anchors.centerIn: parent
                                                 text: i18n("RAISING")
-                                                color: "white"
+                                                color: full.ctpBase
                                                 font.pointSize: Kirigami.Theme.smallFont.pointSize
                                                 font.bold: true
                                             }
@@ -1008,7 +1028,7 @@ PlasmaExtras.Representation {
             PlasmaComponents.Label {
                 visible: full.stale
                 text: i18n("⚠ Data is stale — is poketokend running?")
-                color: Kirigami.Theme.neutralTextColor
+                color: full.ctpPeach
             }
 
             PlasmaComponents.Label {
@@ -1051,7 +1071,7 @@ PlasmaExtras.Representation {
                       : (root.appState && root.appState.errors.length > 0
                          ? root.appState.errors.join(", ")
                          : "")
-                color: Kirigami.Theme.negativeTextColor
+                color: full.ctpRed
                 elide: Text.ElideRight
                 Layout.maximumWidth: full.width / 2
             }
