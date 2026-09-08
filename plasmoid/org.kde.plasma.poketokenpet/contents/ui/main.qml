@@ -83,13 +83,25 @@ PlasmoidItem {
         if (!bubblesEnabled || !panel || !panel.limit_windows
                 || panel.limit_windows.length === 0)
             return;
-        var level = panel.limit_windows[0].level;
+        var window = panel.limit_windows[0];
+        var level = window.level;
         if (level !== root.lastLevel) {
             root.lastLevel = level;
-            if (level === "crit")
+            // "goal" only appears on an evolution/graduation window (see
+            // state.py's _evolution_windows) — a plain limits window has none.
+            if (window.goal !== undefined) {
+                var nearlyThere = window.goal === "hatch" ? i18n("Almost ready to hatch!")
+                                 : window.goal === "graduation" ? i18n("Almost ready to graduate!")
+                                 : i18n("Almost ready to evolve!");
+                if (level === "crit")
+                    showBubble(nearlyThere);
+                else if (level === "warn")
+                    showBubble(i18n("Getting close…"));
+            } else if (level === "crit") {
                 showBubble(i18n("Limit almost gone!"));
-            else if (level === "warn")
+            } else if (level === "warn") {
                 showBubble(i18n("Getting close to the limit."));
+            }
         }
     }
 

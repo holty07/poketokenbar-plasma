@@ -73,6 +73,8 @@ KCM.SimpleKCM {
             showLimit.checked = s.show_limit_in_menu;
         if (s.limit_display_mode !== undefined)
             limitMode.currentIndex = limitMode.keys.indexOf(s.limit_display_mode);
+        if (s.panel_percent_source !== undefined)
+            percentSource.currentIndex = percentSource.keys.indexOf(s.panel_percent_source);
         if (s.limit_notifications !== undefined)
             limitAlerts.checked = s.limit_notifications;
         if (s.companion_notifications !== undefined)
@@ -139,8 +141,16 @@ KCM.SimpleKCM {
 
     QQC2.CheckBox {
         id: showLimit
-        Kirigami.FormData.label: i18n("Limit %:")
+        Kirigami.FormData.label: i18n("Percentage:")
         onToggled: page.push("show_limit_in_menu", checked)
+    }
+
+    QQC2.ComboBox {
+        id: percentSource
+        Kirigami.FormData.label: i18n("Percentage shows:")
+        readonly property var keys: ["limits", "evolution"]
+        model: [i18n("Official limits"), i18n("Evolution / graduation progress")]
+        onActivated: page.push("panel_percent_source", keys[currentIndex])
     }
 
     QQC2.Label {

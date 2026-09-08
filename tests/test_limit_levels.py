@@ -80,3 +80,43 @@ def test_panel_windows_omit_a_missing_window():
 
 def test_tokens_text_can_be_switched_off_independently():
     assert _panel()["tokens_text"] == ""
+
+
+# --- evolution-progress panel source ---------------------------------------
+
+
+def _panel_with_companion(companion_payload, cfg=None):
+    values = dict(config.DEFAULTS, show_limit_in_menu=True, panel_percent_source="evolution")
+    values.update(cfg or {})
+    payload = state.build(
+        {"claude_code": DailyUsage(date="2026-08-18", total_tokens=1)},
+        values,
+        [],
+        limit_status=_status(),
+        companion_payload=companion_payload,
+    )
+    return payload["panel"]
+
+
+def test_evolution_source_shows_stage_progress_instead_of_limits():
+    windows = _panel_with_companion(
+        {"stage": "mon", "stage_progress": 0.42, "is_final_form": False}
+    )["limit_windows"]
+    assert windows == [{"value": 42.0, "text": "42%", "level": "ok", "goal": "evolution"}]
+
+
+def test_evolution_source_labels_the_final_stage_graduation():
+    windows = _panel_with_companion(
+        {"stage": "mon", "stage_progress": 0.99, "is_final_form": True}
+    )["limit_windows"]
+    assert windows[0]["goal"] == "graduation"
+    assert windows[0]["level"] == "crit"
+
+
+def test_evolution_source_uses_egg_progress_before_the_first_hatch():
+    windows = _panel_with_companion({"stage": "egg", "egg_progress": 0.5})["limit_windows"]
+    assert windows == [{"value": 50.0, "text": "50%", "level": "ok", "goal": "hatch"}]
+
+
+def test_evolution_source_is_empty_without_a_companion_payload():
+    assert _panel_with_companion(None)["limit_windows"] == []

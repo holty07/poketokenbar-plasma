@@ -46,6 +46,45 @@ def _limits_payload(status) -> dict:
     }
 
 
+def _limit_windows(limit_status, mode: str, warn: float, crit: float) -> list[dict]:
+    return [
+        {
+            "value": w.utilization,
+            "text": limits.format_percent(w.utilization),
+            "level": limits.level(w.utilization, warn, crit),
+        }
+        for w in limits.windows(limit_status, mode)
+    ]
+
+
+def _evolution_windows(companion_payload: dict | None, warn: float, crit: float) -> list[dict]:
+    """One progress window toward the companion's next evolution or
+    graduation — hatch progress while it's still an egg. `goal` distinguishes
+    this from a limits window, e.g. for the floating pet's bubble copy."""
+    if not companion_payload:
+        return []
+    stage = companion_payload.get("stage")
+    if stage == "egg":
+        progress = companion_payload.get("egg_progress")
+        goal = "hatch"
+    elif stage == "mon":
+        progress = companion_payload.get("stage_progress")
+        goal = "graduation" if companion_payload.get("is_final_form") else "evolution"
+    else:
+        return []
+    if progress is None:
+        return []
+    value = round(progress * 100, 1)
+    return [
+        {
+            "value": value,
+            "text": limits.format_percent(value),
+            "level": limits.level(value, warn, crit),
+            "goal": goal,
+        }
+    ]
+
+
 def build(
     daily_by_provider: dict[str, DailyUsage],
     config_values: dict,
@@ -119,18 +158,23 @@ def build(
             if config_values.get("show_limit_in_menu")
             else "",
             # Structured form so the panel can colour each number on its own.
-            "limit_windows": [
-                {
-                    "value": w.utilization,
-                    "text": limits.format_percent(w.utilization),
-                    "level": limits.level(
-                        w.utilization,
-                        config_values.get("warn_threshold", 80),
-                        config_values.get("crit_threshold", 95),
-                    ),
-                }
-                for w in limits.windows(limit_status, limit_mode)
-            ]
+            # Holds either official limit utilization or evolution/graduation
+            # progress, per panel_percent_source — same {value, text, level}
+            # shape either way, so the panel widgets render it generically.
+            "limit_windows": (
+                _evolution_windows(
+                    companion_payload,
+                    config_values.get("warn_threshold", 80),
+                    config_values.get("crit_threshold", 95),
+                )
+                if config_values.get("panel_percent_source", "limits") == "evolution"
+                else _limit_windows(
+                    limit_status,
+                    limit_mode,
+                    config_values.get("warn_threshold", 80),
+                    config_values.get("crit_threshold", 95),
+                )
+            )
             if config_values.get("show_limit_in_menu")
             else [],
             "sprite_path": (companion_payload or {}).get("sprite_path", ""),

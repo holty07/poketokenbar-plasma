@@ -19,6 +19,7 @@ DEFAULTS: dict[str, object] = {
     "show_cost_in_menu": False,
     "show_limit_in_menu": True,
     "limit_display_mode": "both",
+    "panel_percent_source": "limits",
     "limit_notifications": True,
     "companion_notifications": True,
     "status_checks_enabled": True,
