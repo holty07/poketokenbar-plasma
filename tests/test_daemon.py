@@ -9,15 +9,19 @@ class FakeProvider:
     display_name = "Fake"
     reports_cost = True
 
-    def __init__(self, daily=None, boom=False, pid="fake"):
+    def __init__(self, daily=None, boom=False, pid="fake", history=False):
         self._daily = daily
         self._boom = boom
         self.id = pid
+        self._history = history
 
     def fetch_daily(self, today=None):
         if self._boom:
             raise RuntimeError("boom")
         return self._daily
+
+    def scan_entries(self):
+        return ["entry"] if self._history else []
 
     def fetch_enrichment(self):
         return ProviderEnrichment()
@@ -58,6 +62,33 @@ def test_provider_returning_none_contributes_nothing(tmp_path):
     payload = d.poll_once()
     assert payload["today"]["total_tokens"] == 0
     assert payload["errors"] == []
+
+
+def test_a_quiet_but_used_provider_still_appears_at_zero(tmp_path):
+    # No usage today, but it has history (e.g. antigravity used last week) —
+    # must not vanish from the panel between sessions, which reads as
+    # "broken" rather than "no usage yet".
+    d = _daemon(tmp_path, [FakeProvider(None, pid="antigravity", history=True)])
+    payload = d.poll_once()
+    assert payload["providers"]["antigravity"]["total_tokens"] == 0
+    assert payload["providers"]["antigravity"]["total_cost"] == 0
+
+
+def test_a_never_used_provider_is_left_out_entirely(tmp_path):
+    # No usage today AND no history at all (e.g. codex was never installed) —
+    # that's "not installed", not "no usage yet", so it stays out of the
+    # breakdown rather than cluttering it with permanent zeroes.
+    d = _daemon(tmp_path, [FakeProvider(None, pid="codex", history=False)])
+    payload = d.poll_once()
+    assert "codex" not in payload["providers"]
+
+
+def test_a_failing_provider_is_not_listed_at_zero(tmp_path):
+    # Unlike "no usage", an exception is a real failure — it stays out of
+    # the breakdown and shows up in errors[] instead.
+    d = _daemon(tmp_path, [FakeProvider(boom=True, pid="broken")])
+    payload = d.poll_once()
+    assert "broken" not in payload["providers"]
 
 
 def test_reload_config_command_is_applied(tmp_path):

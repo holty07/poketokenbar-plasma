@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+from datetime import date
 from pathlib import Path
 
 from . import commands, config, state
@@ -80,6 +81,7 @@ class Daemon:
                 except Exception as exc:
                     errors.append(f"{name}: {exc}")
 
+        today_str = date.today().strftime("%Y-%m-%d")
         daily_by_provider: dict[str, DailyUsage] = {}
         for provider in self.providers:
             try:
@@ -89,6 +91,19 @@ class Daemon:
                 continue
             if daily is not None:
                 daily_by_provider[provider.id] = daily
+                continue
+            # Nothing today: still list it at zero if it has ever recorded
+            # any usage on this machine, so a quiet-but-installed provider
+            # doesn't vanish from the panel between sessions. A provider
+            # that has never run at all (no logs anywhere) stays out
+            # entirely — that's "not installed", not "no usage yet".
+            scan_entries = getattr(provider, "scan_entries", None)
+            try:
+                has_history = bool(scan_entries()) if scan_entries is not None else False
+            except Exception:
+                has_history = False
+            if has_history:
+                daily_by_provider[provider.id] = DailyUsage(date=today_str)
 
         periods: dict = {}
         for provider in self.providers:
