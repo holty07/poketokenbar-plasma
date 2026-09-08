@@ -244,6 +244,7 @@ def main() -> int:
     from .providers.antigravity import AntigravityProvider
     from .providers.claude import ClaudeProvider
     from .providers.codex import CodexProvider
+    from .providers.opencode import OpencodeProvider
 
     cache_base = os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")
     cache = ScanCache(Path(cache_base) / "poketokenbar" / "scan.db")
@@ -255,6 +256,7 @@ def main() -> int:
             ClaudeProvider(cache=cache),
             CodexProvider(cache=cache),
             AntigravityProvider(cache=cache),
+            OpencodeProvider(cache=cache),
         ],
         limits_source=LimitsSource(),
         companion_store=CompanionStore(

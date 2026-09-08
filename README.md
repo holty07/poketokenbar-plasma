@@ -143,6 +143,7 @@ For the desktop pet, add **PokeTokenBar Pet** to your desktop.
 | `~/.claude/projects/**/*.jsonl` | Claude Code usage (also `~/.config/claude/projects`, `$CLAUDE_CONFIG_DIR`) |
 | `~/.codex/sessions/**/*.jsonl` | Codex usage |
 | `~/.gemini/antigravity{,-cli,-ide}/conversations/*.db` | Antigravity usage (per-conversation SQLite, protobuf token ledger) |
+| `~/.local/share/opencode/opencode.db` | opencode usage (also `$XDG_DATA_HOME/opencode`) |
 | `~/.claude/.credentials.json` | OAuth token for official limits |
 | `~/.claude.json` | which account those limits belong to |
 | [PokéAPI](https://pokeapi.co/) + [PokeAPI/sprites](https://github.com/PokeAPI/sprites) | species, evolution chains, sprites — fetched at runtime, cached locally |
