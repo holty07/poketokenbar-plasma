@@ -17,13 +17,14 @@ def test_egg_threshold_matches_swift():
 @pytest.mark.parametrize(
     "rarity,total",
     [
-        (Rarity.COMMON, 750_000_000),
-        (Rarity.UNCOMMON, 1_875_000_000),
-        (Rarity.RARE, 3_000_000_000),
-        (Rarity.LEGENDARY, 6_000_000_000),
+        (Rarity.COMMON, 375_000_000),
+        (Rarity.UNCOMMON, 937_500_000),
+        (Rarity.RARE, 1_500_000_000),
+        (Rarity.LEGENDARY, 3_000_000_000),
     ],
 )
-def test_graduation_totals_match_swift(rarity, total):
+def test_graduation_totals(rarity, total):
+    # Half the Swift-ported baseline — tuned for this fork's own usage pace.
     assert graduation_total(rarity) == total
 
 
@@ -43,7 +44,7 @@ def test_later_stages_cost_more():
 
 
 def test_single_form_line_needs_the_whole_total():
-    assert phase_threshold(Rarity.COMMON, 1, 0) == 750_000_000
+    assert phase_threshold(Rarity.COMMON, 1, 0) == 375_000_000
 
 
 # --- rarity ---------------------------------------------------------------

@@ -89,9 +89,12 @@ def test_premium_egg_records_its_guarantee():
 def test_candy_grows_the_companion():
     s = _with_mon()
     s.inventory["rareCandy"] = 1
-    before = s.active.used_at_stage
+    before = s.used_since_install
     shop.use_item(s, "rareCandy")
-    assert s.active.used_at_stage == before + balance.RARE_CANDY_XP
+    # used_since_install, not used_at_stage: a candy can carry the companion
+    # across a stage boundary (see companion.py's overflow handling), and
+    # this growth ledger never rewinds regardless of where it lands.
+    assert s.used_since_install == before + balance.RARE_CANDY_XP
     assert s.inventory["rareCandy"] == 0
 
 

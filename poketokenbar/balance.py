@@ -47,11 +47,14 @@ class Rarity(StrEnum):
         return Rarity.COMMON
 
 
+# Halved from the Swift-ported baseline (750M/1.875B/3B/6B) for this fork:
+# at ~300M tokens/week, the original totals gave roughly one evolution or
+# graduation a week for a common line. Halving targets about two.
 GRADUATION_TOTAL: dict[Rarity, int] = {
-    Rarity.COMMON: 750_000_000,
-    Rarity.UNCOMMON: 1_875_000_000,
-    Rarity.RARE: 3_000_000_000,
-    Rarity.LEGENDARY: 6_000_000_000,
+    Rarity.COMMON: 375_000_000,
+    Rarity.UNCOMMON: 937_500_000,
+    Rarity.RARE: 1_500_000_000,
+    Rarity.LEGENDARY: 3_000_000_000,
 }
 
 
