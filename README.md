@@ -144,6 +144,7 @@ For the desktop pet, add **PokeTokenBar Pet** to your desktop.
 | `~/.codex/sessions/**/*.jsonl` | Codex usage |
 | `~/.gemini/antigravity{,-cli,-ide}/conversations/*.db` | Antigravity usage (per-conversation SQLite, protobuf token ledger) |
 | `~/.local/share/opencode/opencode.db` | opencode usage (also `$XDG_DATA_HOME/opencode`) |
+| `~/.gemini/telemetry.log` | Gemini CLI usage — opt-in: requires `telemetry.enabled`/`telemetry.outfile` in `~/.gemini/settings.json` (off by default upstream) |
 | `~/.claude/.credentials.json` | OAuth token for official limits |
 | `~/.claude.json` | which account those limits belong to |
 | [PokéAPI](https://pokeapi.co/) + [PokeAPI/sprites](https://github.com/PokeAPI/sprites) | species, evolution chains, sprites — fetched at runtime, cached locally |
