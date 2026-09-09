@@ -244,7 +244,6 @@ def main() -> int:
     from .providers.antigravity import AntigravityProvider
     from .providers.claude import ClaudeProvider
     from .providers.codex import CodexProvider
-    from .providers.gemini import GeminiProvider
     from .providers.opencode import OpencodeProvider
 
     cache_base = os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")
@@ -258,7 +257,6 @@ def main() -> int:
             CodexProvider(cache=cache),
             AntigravityProvider(cache=cache),
             OpencodeProvider(cache=cache),
-            GeminiProvider(cache=cache),
         ],
         limits_source=LimitsSource(),
         companion_store=CompanionStore(
