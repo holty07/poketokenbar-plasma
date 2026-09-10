@@ -10,6 +10,10 @@ MouseArea {
     readonly property var windows: panel && panel.limit_windows ? panel.limit_windows : []
     readonly property string spritePath: panel && panel.sprite_path ? panel.sprite_path : ""
     readonly property var companion: root.appState ? root.appState.companion : null
+    // panel_percent_source "evolution" already surfaces hatch progress as one
+    // of the windows below; showing the companion label too would repeat the
+    // same percentage twice in the bar.
+    readonly property bool hasHatchWindow: compact.windows.some(function (w) { return w.goal === "hatch"; })
 
     Layout.minimumWidth: row.implicitWidth
     Layout.preferredWidth: row.implicitWidth
@@ -45,7 +49,7 @@ MouseArea {
         // simply blank until the first hatch, which reads as "broken".
         PlasmaComponents.Label {
             text: compact.companion && compact.companion.label ? compact.companion.label : ""
-            visible: text.length > 0 && compact.spritePath === ""
+            visible: text.length > 0 && compact.spritePath === "" && !compact.hasHatchWindow
             font.pixelSize: Math.round(compact.height * 0.45)
         }
 

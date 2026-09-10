@@ -75,10 +75,14 @@ def _evolution_windows(companion_payload: dict | None, warn: float, crit: float)
     if progress is None:
         return []
     value = round(progress * 100, 1)
+    text = limits.format_percent(value)
+    remaining_text = companion_payload.get("remaining_text")
+    if remaining_text:
+        text = f"{text} ({remaining_text})"
     return [
         {
             "value": value,
-            "text": limits.format_percent(value),
+            "text": text,
             "level": limits.level(value, warn, crit),
             "goal": goal,
         }

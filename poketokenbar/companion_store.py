@@ -177,11 +177,14 @@ class CompanionStore:
         mon = self.state.active
         if mon is None:
             progress = min(1.0, self.state.egg_usage / balance.EGG_HATCH_THRESHOLD)
+            remaining = max(0, balance.EGG_HATCH_THRESHOLD - self.state.egg_usage)
             return {
                 "stage": "egg",
-                "label": f"\N{EGG}{round(progress * 100)}%",
+                "label": f"\N{EGG}{round(progress * 100)}% ({_compact(remaining)})",
                 "egg_usage": self.state.egg_usage,
                 "egg_progress": round(progress, 4),
+                "remaining_tokens": remaining,
+                "remaining_text": _compact(remaining),
                 "egg_tier": str(self.state.egg_tier) if self.state.egg_tier else None,
                 "sprite_path": "",
                 "dex_count": len(self.state.dex),

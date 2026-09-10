@@ -110,6 +110,16 @@ def test_egg_payload_reports_progress(tmp_path):
     assert 0.4 < payload["egg_progress"] < 0.6
 
 
+def test_egg_payload_reports_remaining_tokens_in_the_label(tmp_path):
+    s = _store(tmp_path)
+    s.update({"claude_code": balance.EGG_HATCH_THRESHOLD // 2}, today="2026-08-18")
+    payload = s.payload()
+    remaining = balance.EGG_HATCH_THRESHOLD - balance.EGG_HATCH_THRESHOLD // 2
+    assert payload["remaining_tokens"] == remaining
+    assert payload["remaining_text"] in payload["label"]
+    assert payload["label"].endswith(f"({payload['remaining_text']})")
+
+
 def test_mon_payload_reports_stage_progress(tmp_path):
     s = _store(tmp_path)
     s.update({"claude_code": balance.EGG_HATCH_THRESHOLD}, today="2026-08-18")

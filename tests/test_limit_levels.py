@@ -118,5 +118,12 @@ def test_evolution_source_uses_egg_progress_before_the_first_hatch():
     assert windows == [{"value": 50.0, "text": "50%", "level": "ok", "goal": "hatch"}]
 
 
+def test_evolution_source_shows_remaining_tokens_in_brackets():
+    windows = _panel_with_companion(
+        {"stage": "egg", "egg_progress": 0.5, "remaining_text": "2.5M"}
+    )["limit_windows"]
+    assert windows[0]["text"] == "50% (2.5M)"
+
+
 def test_evolution_source_is_empty_without_a_companion_payload():
     assert _panel_with_companion(None)["limit_windows"] == []
