@@ -71,12 +71,6 @@ KCM.SimpleKCM {
             showCost.checked = s.show_cost_in_menu;
         if (s.show_limit_in_menu !== undefined)
             showLimit.checked = s.show_limit_in_menu;
-        if (s.limit_display_mode !== undefined)
-            limitMode.currentIndex = limitMode.keys.indexOf(s.limit_display_mode);
-        if (s.panel_percent_source !== undefined)
-            percentSource.currentIndex = percentSource.keys.indexOf(s.panel_percent_source);
-        if (s.limit_notifications !== undefined)
-            limitAlerts.checked = s.limit_notifications;
         if (s.companion_notifications !== undefined)
             companionAlerts.checked = s.companion_notifications;
         if (s.status_checks_enabled !== undefined)
@@ -115,14 +109,6 @@ KCM.SimpleKCM {
         onValueModified: page.push("refresh_interval", value)
     }
 
-    QQC2.ComboBox {
-        id: limitMode
-        Kirigami.FormData.label: i18n("Limit display:")
-        readonly property var keys: ["both", "session", "weekly"]
-        model: [i18n("Both"), i18n("5-hour only"), i18n("Weekly only")]
-        onActivated: page.push("limit_display_mode", keys[currentIndex])
-    }
-
     // ---------------- Panel ----------------
 
     Item { Kirigami.FormData.isSection: true; Kirigami.FormData.label: i18n("Show in panel") }
@@ -141,32 +127,18 @@ KCM.SimpleKCM {
 
     QQC2.CheckBox {
         id: showLimit
-        Kirigami.FormData.label: i18n("Percentage:")
+        Kirigami.FormData.label: i18n("Evolution / graduation progress:")
         onToggled: page.push("show_limit_in_menu", checked)
     }
 
-    QQC2.ComboBox {
-        id: percentSource
-        Kirigami.FormData.label: i18n("Percentage shows:")
-        readonly property var keys: ["limits", "evolution"]
-        model: [i18n("Official limits"), i18n("Evolution / graduation progress")]
-        onActivated: page.push("panel_percent_source", keys[currentIndex])
-    }
-
     QQC2.Label {
-        text: i18n("All off shows only the character")
+        text: i18n("Off shows only the character")
         opacity: 0.7
     }
 
     // ---------------- Notifications ----------------
 
     Item { Kirigami.FormData.isSection: true; Kirigami.FormData.label: i18n("Notifications") }
-
-    QQC2.CheckBox {
-        id: limitAlerts
-        Kirigami.FormData.label: i18n("Limit alerts:")
-        onToggled: page.push("limit_notifications", checked)
-    }
 
     RowLayout {
         Kirigami.FormData.label: i18n("Warning:")

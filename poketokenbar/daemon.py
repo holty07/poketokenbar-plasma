@@ -12,7 +12,6 @@ from .companion_store import CompanionStore
 from .burn import BurnTracker
 from .notify import Notifier
 from .status import StatusChecker
-from .limits_source import LimitsSource
 from .pokeapi import PokeAPI
 from .sprites import SpriteStore
 from .cache import ScanCache
@@ -258,7 +257,10 @@ def main() -> int:
             AntigravityProvider(cache=cache),
             OpencodeProvider(cache=cache),
         ],
-        limits_source=LimitsSource(),
+        # Official Claude usage limits are disabled for now — this desktop
+        # widget no longer needs to fetch or show them. Pass LimitsSource()
+        # here (see poketokenbar.limits_source) to bring the feature back.
+        limits_source=None,
         companion_store=CompanionStore(
             api=PokeAPI(), sprite_store=SpriteStore()
         ),

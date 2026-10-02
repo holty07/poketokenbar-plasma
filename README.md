@@ -20,15 +20,16 @@
 
 </div>
 
-PokeTokenBar for Plasma turns the AI coding tokens you're already burning — Claude Code and Codex — into a growing **Pokémon companion** in your KDE panel. Spend tokens, hatch an egg, evolve it through its real evolution line, graduate it into your Pokédex, and start again. Underneath the companion it's a precise usage tracker — today's spend, cost, and official 5-hour / weekly limits, read straight from your local logs.
+PokeTokenBar for Plasma turns the AI coding tokens you're already burning — Claude Code and Codex — into a growing **Pokémon companion** in your KDE panel. Spend tokens, hatch an egg, evolve it through its real evolution line, graduate it into your Pokédex, and start again. Underneath the companion it's a precise usage tracker — today's spend and cost, read straight from your local logs.
 
 > Token usage is read directly from local Claude Code and Codex data (`totalTokens` = input + output + cache, local date) — no external CLI needed. Unofficial, non-commercial Pokémon fan project — see [License & disclaimer](#license--disclaimer).
+
+> **Note:** official Claude 5-hour / weekly usage-limit tracking (reset countdowns, burn-rate forecast, limit-triggered Rare Candy, limit alerts) is disabled for now — the panel shows hatch/evolution/graduation progress instead. The code is still there; see `poketokenbar/daemon.py`.
 
 ## Why
 
 - **The usage tracker you actually enjoy opening.** Your spend raises a Pokémon that hatches, evolves, graduates, and fills a Pokédex — and every shiny is a reason to check back.
 - See today's token spend & cost at a glance — no dashboard, no browser tab.
-- Track official **5-hour / weekly** limits with reset countdowns and a burn-rate forecast for when you'll hit them.
 
 ## How it works
 
@@ -36,8 +37,7 @@ PokeTokenBar for Plasma turns the AI coding tokens you're already burning — Cl
 2. 🐣 **Hatch.** Eggs hatch into Pokémon with real evolution lines from [PokéAPI](https://pokeapi.co/) — any Gen 1–5 line (328 possible starts), weighted by the official capture rate: commons hatch often, a legendary is rare. It appears in your **Collection** immediately while you raise it. Every hatch rolls one of 25 natures — and once in a rare while, the egg hatches **✨ Shiny**.
 3. ⚡ **Evolve.** Keep coding and it grows through its actual evolution tree, with a celebration banner at each step.
 4. 🎓 **Graduate & collect.** Final form + threshold permanently archives it in your **Pokédex** — rarer takes longer — and a fresh egg arrives.
-5. 🍬 **Max out, get a candy.** Fill a 5-hour or weekly usage limit and you earn **Rare Candy** — spend it from the **Bag** to grow your current Pokémon.
-6. 🛒 **Spend at the Shop.** Every token you've used is spendable currency — buy **Rare Candy**, a **Mint** that re-rolls your Pokémon's nature, a **Shiny Charm** that permanently raises your shiny odds, or an egg to send off your current companion and start over.
+5. 🛒 **Spend at the Shop.** Every token you've used is spendable currency — buy **Rare Candy**, a **Mint** that re-rolls your Pokémon's nature, a **Shiny Charm** that permanently raises your shiny odds, or an egg to send off your current companion and start over.
 
 ## Tour
 
@@ -45,7 +45,7 @@ PokeTokenBar for Plasma turns the AI coding tokens you're already burning — Cl
 <tr>
 <td width="55%" valign="top">
 <h3>🏠 Home</h3>
-Your companion with its rarity, nature, and evolution line — dimmed forms are the ones it hasn't reached yet. Today's tokens and cost, this week, this month, and a per-provider breakdown of input, output, and cache. Then the official limits with reset countdowns and a burn-rate forecast.
+Your companion with its rarity, nature, and evolution line — dimmed forms are the ones it hasn't reached yet. Today's tokens and cost, this week, this month, and a per-provider breakdown of input, output, and cache.
 </td>
 <td width="45%" align="center"><img src="assets/popup-home.png" width="300" alt="Home tab"></td>
 </tr>
@@ -67,17 +67,15 @@ A species-level Pokédex with rarity filters and paging — every form you've ac
 
 ### In your panel
 
-An animated Gen-V sprite lives next to your 5-hour and weekly limit percentages, coloured green, yellow, or red as you approach the cap. Add today's tokens or cost — or turn everything off for a character-only panel.
+An animated Gen-V sprite lives next to your hatch / evolution / graduation progress, coloured green, yellow, or red as you approach the next step. Add today's tokens or cost — or turn everything off for a character-only panel.
 
 ### 🐾 Let it live on your desktop
 
-A second widget puts your companion on the desktop at any size from 48 to 192px. Hover it for its mood, click for progress, right-click for a menu — and limit alerts can appear as a speech bubble above it.
+A second widget puts your companion on the desktop at any size from 48 to 192px. Hover it for its mood, click for progress, right-click for a menu — and hatch/evolution alerts can appear as a speech bubble above it.
 
 ## Also in the box
 
-- **Burn-rate forecast** — projects when the current 5-hour window hits 100%, from the utilization trend.
-- **Desktop notifications** — hatch, evolution, graduation, and limit warnings via `notify-send`.
-- **Rare Candy grants** — fill a limit window and earn candy; weekly pays more than a session.
+- **Desktop notifications** — hatch, evolution, and graduation via `notify-send`.
 - **Ditto disguise** — once in a rare while a common hatch is secretly a Ditto, and reveals itself when it "evolves".
 - **Provider status** — Claude and OpenAI incidents surface in the popup when they happen.
 - **Save export / import** — move your Pokédex, tokens, bag, and companion between machines.
@@ -92,8 +90,6 @@ A second widget puts your companion on the desktop at any size from 48 to 192px.
 | **Codex** | ✅ verified against upstream's own test fixtures |
 | **Antigravity** | ✅ token counts only — subscription-billed, reports no cost |
 | Gemini CLI, OpenCode, Hermes Agent, Cursor, Grok CLI, Copilot CLI, Kiro CLI | ❌ not ported — see [What's missing](#whats-missing) |
-
-Official limits are read for Claude accounts.
 
 ## Install
 
@@ -160,13 +156,12 @@ Where the app keeps its own state:
 ## Privacy & permissions
 
 - **Everything is local.** Token counts come from log files already on your disk. No telemetry, no analytics, no account of ours.
-- **Three network calls, all optional.** PokéAPI for species data, GitHub for sprites, and `api.anthropic.com/api/oauth/usage` for your official limits using the token Claude Code already stored. If any fail, token counts keep working.
-- **No credentials leave your machine.** The OAuth token is read from `~/.claude/.credentials.json` and sent only to Anthropic.
+- **Two network calls, both optional.** PokéAPI for species data and GitHub for sprites. If either fails, token counts keep working. (A third, `api.anthropic.com/api/oauth/usage` for official usage limits, exists in the code but is currently disabled — see the note under [Why](#why).)
 - **Nothing is bundled.** No Pokémon sprites or data ship in this repository; they're fetched at runtime and cached under `~/.cache`.
 
 ### If you use several Claude accounts
 
-Session logs carry **no account marker**, so token totals from every account on the machine are summed and cannot be separated. Limits come from whichever account is currently logged in — so the popup names that account beside them. To keep accounts apart, give each its own `CLAUDE_CONFIG_DIR`.
+Session logs carry **no account marker**, so token totals from every account on the machine are summed and cannot be separated. To keep accounts apart, give each its own `CLAUDE_CONFIG_DIR`.
 
 ## What's missing
 

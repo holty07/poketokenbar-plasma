@@ -38,7 +38,16 @@ def test_level_is_crit_above_crit():
 
 
 def _panel(cfg=None, status=None):
-    values = dict(config.DEFAULTS, show_limit_in_menu=True, show_tokens_in_menu=False)
+    # panel_percent_source defaults to "evolution" now that the panel no
+    # longer fetches official limits — these tests exercise _limit_windows
+    # directly, which still works if the daemon is ever pointed at a real
+    # LimitsSource again, so they ask for it explicitly.
+    values = dict(
+        config.DEFAULTS,
+        show_limit_in_menu=True,
+        show_tokens_in_menu=False,
+        panel_percent_source="limits",
+    )
     values.update(cfg or {})
     payload = state.build(
         {"claude_code": DailyUsage(date="2026-08-18", total_tokens=1)},

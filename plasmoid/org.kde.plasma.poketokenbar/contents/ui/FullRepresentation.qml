@@ -14,6 +14,9 @@ PlasmaExtras.Representation {
     readonly property var providers: root.appState ? root.appState.providers : ({})
     readonly property var periods: root.appState && root.appState.periods ? root.appState.periods : null
     readonly property var limits: root.appState && root.appState.limits ? root.appState.limits : null
+    // Official Claude usage limits are disabled for now (see daemon.py) — the
+    // section below stays hidden rather than showing an empty heading.
+    readonly property bool hasLimits: full.limits && (full.limits.session || full.limits.weekly)
     readonly property var companion: root.appState && root.appState.companion
                                      && root.appState.companion.stage
                                      ? root.appState.companion : null
@@ -455,11 +458,12 @@ PlasmaExtras.Representation {
                         }
                     }
 
-                    Kirigami.Separator { Layout.fillWidth: true }
+                    Kirigami.Separator { Layout.fillWidth: true; visible: full.hasLimits }
 
                     // --- limits ---
                     PlasmaExtras.Heading {
                         level: 4
+                        visible: full.hasLimits
                         text: full.limits && full.limits.plan
                               ? i18n("Limits (official) · %1", full.limits.plan.toUpperCase())
                               : i18n("Limits (official)")
