@@ -16,7 +16,7 @@ PlasmaExtras.Representation {
     readonly property var limits: root.appState && root.appState.limits ? root.appState.limits : null
     // Official Claude usage limits are disabled for now (see daemon.py) — the
     // section below stays hidden rather than showing an empty heading.
-    readonly property bool hasLimits: full.limits && (full.limits.session || full.limits.weekly)
+    readonly property bool hasLimits: !!(full.limits && (full.limits.session || full.limits.weekly))
     readonly property var companion: root.appState && root.appState.companion
                                      && root.appState.companion.stage
                                      ? root.appState.companion : null
