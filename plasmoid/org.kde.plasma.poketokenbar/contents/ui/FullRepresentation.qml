@@ -260,7 +260,9 @@ PlasmaExtras.Representation {
                                 }
 
                                 Rectangle {
-                                    visible: full.companion && full.companion.rarity
+                                    // rarity/is_shiny/evo_line only exist once a companion has
+                                    // hatched — an egg's payload omits them entirely.
+                                    visible: full.companion !== null && full.companion.stage === "mon"
                                     radius: height / 2
                                     color: full.companion ? full.rarityColor(full.companion.rarity) : "grey"
                                     implicitWidth: rarityLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
@@ -269,7 +271,8 @@ PlasmaExtras.Representation {
                                     PlasmaComponents.Label {
                                         id: rarityLabel
                                         anchors.centerIn: parent
-                                        text: full.companion ? full.companion.rarity.toUpperCase() : ""
+                                        text: (full.companion && full.companion.stage === "mon")
+                                              ? full.companion.rarity.toUpperCase() : ""
                                         color: full.ctpBase
                                         font.pointSize: Kirigami.Theme.smallFont.pointSize
                                         font.bold: true
@@ -278,7 +281,8 @@ PlasmaExtras.Representation {
 
                                 PlasmaComponents.Label {
                                     text: "✨"
-                                    visible: full.companion && full.companion.is_shiny
+                                    visible: full.companion !== null && full.companion.stage === "mon"
+                                             && full.companion.is_shiny
                                 }
                             }
 
@@ -327,12 +331,12 @@ PlasmaExtras.Representation {
                     // --- evolution line strip ---
                     RowLayout {
                         Layout.fillWidth: true
-                        visible: full.companion && full.companion.evo_line
+                        visible: full.companion !== null && full.companion.stage === "mon"
                                  && full.companion.evo_line.length > 1
                         spacing: Kirigami.Units.largeSpacing
 
                         Repeater {
-                            model: full.companion && full.companion.evo_line
+                            model: (full.companion && full.companion.stage === "mon")
                                    ? full.companion.evo_line : []
 
                             ColumnLayout {
@@ -393,7 +397,7 @@ PlasmaExtras.Representation {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        visible: full.periods && full.periods.week
+                        visible: !!(full.periods && full.periods.week)
                         spacing: Kirigami.Units.smallSpacing
 
                         PlasmaComponents.Label { text: i18n("This week"); opacity: 0.6 }
