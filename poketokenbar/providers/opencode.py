@@ -147,8 +147,10 @@ def _parse_database(db_path: Path) -> list[Entry] | None:
         for sql, v2 in (
             ("SELECT id, time_created, data FROM message WHERE data IS NOT NULL", False),
             (
-                "SELECT id, time_created, data FROM session_message"
-                " WHERE type = 'assistant' AND data IS NOT NULL",
+                (
+                    "SELECT id, time_created, data FROM session_message"
+                    " WHERE type = 'assistant' AND data IS NOT NULL"
+                ),
                 True,
             ),
         ):

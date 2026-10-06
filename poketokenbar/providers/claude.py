@@ -97,7 +97,7 @@ def parse_cost_state_line(line: str) -> dict[str, float] | None:
     """
     try:
         obj = _loads(line)
-    except Exception:
+    except ValueError:  # json and orjson decode errors are both ValueErrors
         return None
     if not isinstance(obj, dict) or obj.get("type") != "cost-state":
         return None
