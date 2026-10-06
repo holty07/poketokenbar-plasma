@@ -2,6 +2,7 @@ from .antigravity import AntigravityProvider
 from .base import UsageProvider
 from .claude import ClaudeProvider
 from .codex import CodexProvider
+from .hermes import HermesProvider
 from .opencode import OpencodeProvider
 
 # Registry. Adding a source means adding an implementation and an entry here —
@@ -12,6 +13,7 @@ PROVIDERS: list[UsageProvider] = [
     CodexProvider(),
     AntigravityProvider(),
     OpencodeProvider(),
+    HermesProvider(),
 ]
 
 __all__ = [
@@ -19,6 +21,7 @@ __all__ = [
     "AntigravityProvider",
     "ClaudeProvider",
     "CodexProvider",
+    "HermesProvider",
     "OpencodeProvider",
     "UsageProvider",
 ]

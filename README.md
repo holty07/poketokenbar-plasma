@@ -89,7 +89,9 @@ A second widget puts your companion on the desktop at any size from 48 to 192px.
 | **Claude Code** | ✅ verified against a real 559 MB log corpus |
 | **Codex** | ✅ verified against upstream's own test fixtures |
 | **Antigravity** | ✅ token counts only — subscription-billed, reports no cost |
-| Gemini CLI, OpenCode, Hermes Agent, Cursor, Grok CLI, Copilot CLI, Kiro CLI | ❌ not ported — see [What's missing](#whats-missing) |
+| **OpenCode** | ✅ reads opencode's own session database directly |
+| **Hermes Agent** | ✅ reads Hermes's own session database directly |
+| Gemini CLI, Cursor, Grok CLI, Copilot CLI, Kiro CLI | ❌ not ported — see [What's missing](#whats-missing) |
 
 ## Install
 
@@ -140,6 +142,7 @@ For the desktop pet, add **PokeTokenBar Pet** to your desktop.
 | `~/.codex/sessions/**/*.jsonl` | Codex usage |
 | `~/.gemini/antigravity{,-cli,-ide}/conversations/*.db` | Antigravity usage (per-conversation SQLite, protobuf token ledger) |
 | `~/.local/share/opencode/opencode.db` | opencode usage (also `$XDG_DATA_HOME/opencode`) |
+| `~/.hermes/state.db` | Hermes Agent usage (also `$HERMES_HOME`) |
 | `~/.claude/.credentials.json` | OAuth token for official limits |
 | `~/.claude.json` | which account those limits belong to |
 | [PokéAPI](https://pokeapi.co/) + [PokeAPI/sprites](https://github.com/PokeAPI/sprites) | species, evolution chains, sprites — fetched at runtime, cached locally |
@@ -167,7 +170,7 @@ Session logs carry **no account marker**, so token totals from every account on 
 
 Compared to the macOS original:
 
-- **Seven of the ten usage providers.** Only Claude Code, Codex, and Antigravity are ported. I have no data for the others, so porting them would mean shipping parsers nobody could verify. The provider interface is unchanged — each is one file when someone who uses one wants to add it.
+- **Five of the ten usage providers.** Claude Code, Codex, Antigravity, opencode, and Hermes Agent are ported. I have no data for the others, so porting them would mean shipping parsers nobody could verify. The provider interface is unchanged — each is one file when someone who uses one wants to add it.
 - **Antigravity's official rate limits.** The Swift original also polls Google's quota endpoint (`AntigravityRateLimitsProvider`) for a 5-hour/weekly percentage. Not ported here — it needs a second, per-provider limits pipeline (today's `LimitsSource` is Claude-only) plus OAuth token handling, so it's out of scope for the usage-provider port. Token counts and cost (always $0 — subscription-billed) work today without it.
 - In-app updater, crash reporter, and Keychain handling — macOS concepts with no Linux equivalent, or unnecessary here.
 - A diagnostics / log viewer.
