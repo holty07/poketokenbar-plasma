@@ -47,4 +47,30 @@ def test_cost_sums_all_four_token_kinds():
 
 
 def test_cost_of_an_unpriced_model_is_zero():
-    assert pricing.cost("claude-fable-5", 10**9, 10**9, 10**9, 10**9) == 0.0
+    assert pricing.cost("totally-unknown-model", 10**9, 10**9, 10**9, 10**9) == 0.0
+
+
+def test_claude_5_family_has_exact_rows_not_the_claude_4_fallback():
+    assert pricing.rate("claude-opus-5-5").input == pytest.approx(4 / 1_000_000)
+    assert pricing.rate("claude-opus-5-5").cache_read == pytest.approx(0.2 / 1_000_000)
+    assert pricing.rate("claude-sonnet-5").input == pytest.approx(2 / 1_000_000)
+    assert pricing.rate("claude-fable-5").input == pytest.approx(10 / 1_000_000)
+    # Fable 5.1 cache reads are a quarter of Fable 5's.
+    assert pricing.rate("claude-fable-5-1").cache_read == pytest.approx(0.25 / 1_000_000)
+
+
+def test_model_key_normalizes_namespace_suffix_and_alias():
+    assert pricing.model_key(" Anthropic/claude-opus-5[1m] ") == "claude-opus-5"
+    assert pricing.model_key("claude-haiku-4-5") == "claude-haiku-4-5-20251001"
+    assert pricing.rate("openai/gpt-5.6") == pricing.TABLE["gpt-5.6-sol"]
+
+
+def test_flash_lite_is_not_billed_as_flash():
+    assert pricing.rate("gemini-2.5-flash-lite").input == pytest.approx(0.10 / 1_000_000)
+
+
+def test_long_context_gpt_request_bills_input_2x_output_1_5x():
+    short = pricing.cost("gpt-5.5", 272_000, 1_000, 0, 0)
+    assert short == pytest.approx(272_000 * 5e-6 + 1_000 * 30e-6)
+    long = pricing.cost("gpt-5.5", 272_001, 1_000, 0, 0)
+    assert long == pytest.approx(272_001 * 5e-6 * 2 + 1_000 * 30e-6 * 1.5)

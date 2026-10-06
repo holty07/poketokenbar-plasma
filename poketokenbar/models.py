@@ -18,6 +18,9 @@ class Entry:
     output: int = 0
     cache_write: int = 0
     cache_read: int = 0
+    # A cost the source itself reported (Claude Code's cost-state ledger).
+    # When set it wins over a price-table estimate; None means "estimate it".
+    explicit_cost: float | None = None
 
     @property
     def total(self) -> int:
