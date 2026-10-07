@@ -484,7 +484,12 @@ PlasmaExtras.Representation {
                 contentWidth: availableWidth
 
                 ColumnLayout {
-                    width: full.width - Kirigami.Units.gridUnit
+                    // Bind to the ScrollView's own availableWidth, not a fixed
+                    // full.width - margin: a fixed width ignores the vertical
+                    // scrollbar's reserved space once content overflows, so the
+                    // scrollbar silently overlaps (and clips) right-aligned
+                    // content instead of the layout narrowing to make room.
+                    width: parent.availableWidth
                     spacing: Kirigami.Units.smallSpacing
 
                     // --- celebration banner ---
@@ -975,7 +980,12 @@ PlasmaExtras.Representation {
                 contentWidth: availableWidth
 
                 ColumnLayout {
-                    width: full.width - Kirigami.Units.gridUnit
+                    // Bind to the ScrollView's own availableWidth, not a fixed
+                    // full.width - margin: a fixed width ignores the vertical
+                    // scrollbar's reserved space once content overflows, so the
+                    // scrollbar silently overlaps (and clips) right-aligned
+                    // content instead of the layout narrowing to make room.
+                    width: parent.availableWidth
                     spacing: Kirigami.Units.smallSpacing
 
                     ColumnLayout {
@@ -1703,7 +1713,12 @@ PlasmaExtras.Representation {
                         contentWidth: availableWidth
 
                         ColumnLayout {
-                            width: full.width - Kirigami.Units.gridUnit
+                            // Bind to the ScrollView's own availableWidth, not a fixed
+                    // full.width - margin: a fixed width ignores the vertical
+                    // scrollbar's reserved space once content overflows, so the
+                    // scrollbar silently overlaps (and clips) right-aligned
+                    // content instead of the layout narrowing to make room.
+                    width: parent.availableWidth
                             spacing: Kirigami.Units.smallSpacing
 
                             PlasmaComponents.Label {
@@ -1847,7 +1862,12 @@ PlasmaExtras.Representation {
                 contentWidth: availableWidth
 
                 ColumnLayout {
-                    width: full.width - Kirigami.Units.gridUnit
+                    // Bind to the ScrollView's own availableWidth, not a fixed
+                    // full.width - margin: a fixed width ignores the vertical
+                    // scrollbar's reserved space once content overflows, so the
+                    // scrollbar silently overlaps (and clips) right-aligned
+                    // content instead of the layout narrowing to make room.
+                    width: parent.availableWidth
                     spacing: Kirigami.Units.smallSpacing
 
                     // Period controls in one row above the chart.
