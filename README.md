@@ -34,10 +34,10 @@ PokeTokenBar for Plasma turns the AI coding tokens you're already burning — Cl
 ## How it works
 
 1. 🥚 **Code as usual.** The tokens you burn in Claude Code or Codex incubate an egg — nothing extra to run.
-2. 🐣 **Hatch.** Eggs hatch into Pokémon with real evolution lines from [PokéAPI](https://pokeapi.co/) — any Gen 1–5 line (328 possible starts), weighted by the official capture rate: commons hatch often, a legendary is rare. It appears in your **Collection** immediately while you raise it. Every hatch rolls one of 25 natures — and once in a rare while, the egg hatches **✨ Shiny**.
+2. 🐣 **Hatch.** Eggs hatch into Pokémon with real evolution lines from [PokéAPI](https://pokeapi.co/) — any Gen 1–5 line (328 possible starts), weighted by the official capture rate: commons hatch often, a legendary is rare. It appears in your **Collection** immediately while you raise it. Every hatch rolls one of 25 natures and its own individual values — IVs, gender, ability and a moveset that grows with it — and once in a rare while, the egg hatches **✨ Shiny**. Unown hatches as one of its 28 letters, each collected separately.
 3. ⚡ **Evolve.** Keep coding and it grows through its actual evolution tree, with a celebration banner at each step.
-4. 🎓 **Graduate & collect.** Final form + threshold permanently archives it in your **Pokédex** — rarer takes longer — and a fresh egg arrives.
-5. 🛒 **Spend at the Shop.** Every token you've used is spendable currency — buy **Rare Candy**, a **Mint** that re-rolls your Pokémon's nature, a **Shiny Charm** that permanently raises your shiny odds, or an egg to send off your current companion and start over.
+4. 🎓 **Graduate & collect.** Final form + threshold permanently archives it in your **Pokédex** — rarer takes longer — and a fresh egg arrives. Hatch a line you've already graduated and it grows twice as fast.
+5. 🛒 **Spend at the Shop.** Every token you've used is spendable currency — buy **Rare Candy** (one or many at once), a **Mint** that re-rolls your Pokémon's nature, a **Shiny Charm** that permanently raises your shiny odds, or an egg to release your current companion — it stays in your Pokédex — and start over. Releasing a legendary or shiny asks twice.
 
 ## Tour
 
@@ -45,7 +45,7 @@ PokeTokenBar for Plasma turns the AI coding tokens you're already burning — Cl
 <tr>
 <td width="55%" valign="top">
 <h3>🏠 Home</h3>
-Your companion with its rarity, nature, and evolution line — dimmed forms are the ones it hasn't reached yet. Today's tokens and cost, this week, this month, and a per-provider breakdown of input, output, and cache.
+Your companion with its rarity, nature, and evolution line — dimmed forms are the ones it hasn't reached yet. Today's tokens and cost, this week, this month, a day-by-day chart of the month stacked by provider, and a per-provider breakdown of input, output, and cache. A **Usage** tab recaps any week, month or year.
 </td>
 <td width="45%" align="center"><img src="assets/popup-home.png" width="300" alt="Home tab"></td>
 </tr>
@@ -59,7 +59,7 @@ Spend the tokens you've already used. Rare Candy, Mint, Shiny Charm, and three g
 <tr>
 <td width="55%" valign="top">
 <h3>📕 Collection</h3>
-A species-level Pokédex with rarity filters and paging — every form you've actually been, including the one you're raising right now. The Catch log records each individual instead: its full evolution chain, its nature, and how long it took.
+A species-level Pokédex with search, sorting, rarity and shiny filters — every form you've actually been, including the one you're raising right now. Click a sprite for its entry: level, types, ability, stats and IVs, moves — and pin it to your panel. The Catch log records each individual instead: its full evolution chain, level, nature, and how long it took.
 </td>
 <td width="45%" align="center"><img src="assets/popup-collection.png" width="300" alt="Collection tab"></td>
 </tr>
@@ -71,7 +71,7 @@ An animated Gen-V sprite lives next to your hatch / evolution / graduation progr
 
 ### 🐾 Let it live on your desktop
 
-A second widget puts your companion on the desktop at any size from 48 to 192px. Hover it for its mood, click for progress, right-click for a menu — and hatch/evolution alerts can appear as a speech bubble above it.
+A second widget puts your companion on the desktop at any size from 48 to 384px. Hover it for its mood, click for progress, right-click for a menu — and hatch/evolution alerts can appear as a speech bubble above it.
 
 ## Also in the box
 
@@ -79,8 +79,11 @@ A second widget puts your companion on the desktop at any size from 48 to 192px.
 - **Ditto disguise** — once in a rare while a common hatch is secretly a Ditto, and reveals itself when it "evolves".
 - **Provider status** — Claude and OpenAI incidents surface in the popup when they happen.
 - **Save export / import** — move your Pokédex, tokens, bag, and companion between machines.
+- **Automatic backups** — a snapshot every 12 hours (the newest ten kept), restorable from Settings; a corrupt save recovers from the newest one on its own.
+- **Difficulty** — separate growth and shop-price sliders, from 0.1× to 2×.
+- **Extra scan folders** — point a provider at logs synced from another machine.
 - **Stale detection** — if the daemon stops, the panel says so instead of quietly freezing.
-- **Four languages** — English, 한국어, 日本語, Español.
+- **Eight languages** — English, 한국어, 日本語, Español, Français, Português, Deutsch, Русский.
 
 ## Works with
 
