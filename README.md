@@ -93,6 +93,7 @@ A second widget puts your companion on the desktop at any size from 48 to 192px.
 | **Hermes Agent** | ✅ reads Hermes's own session database directly |
 | **Kimi Code** | ✅ token counts from its `wire.jsonl` usage records — records no cost |
 | **Pi** | ✅ reads Pi's session JSONL, including its own cost estimate |
+| **omp (oh-my-pi)** | ✅ reads omp's session JSONL, including its own cost estimate |
 | Gemini CLI, Cursor, Grok CLI, Copilot CLI, Kiro CLI | ❌ not ported — see [What's missing](#whats-missing) |
 
 ## Install
@@ -147,6 +148,7 @@ For the desktop pet, add **PokeTokenBar Pet** to your desktop.
 | `~/.hermes/state.db` | Hermes Agent usage (also `$HERMES_HOME`) |
 | `~/.kimi-code/sessions/**/wire.jsonl` | Kimi Code usage (also `$KIMI_CODE_HOME`) |
 | `~/.pi/agent/sessions/**/*.jsonl` | Pi usage (also `$PI_CODING_AGENT_DIR`, `$PI_CODING_AGENT_SESSION_DIR`) |
+| `~/.omp/agent/sessions/**/*.jsonl` | omp usage (also `$OMP_CODING_AGENT_DIR`; `bridge/` copies skipped) |
 | `~/.claude/.credentials.json` | OAuth token for official limits |
 | `~/.claude.json` | which account those limits belong to |
 | [PokéAPI](https://pokeapi.co/) + [PokeAPI/sprites](https://github.com/PokeAPI/sprites) | species, evolution chains, sprites — fetched at runtime, cached locally |
