@@ -1,7 +1,9 @@
+import os
 import sqlite3
+import time
 from datetime import datetime, timezone
 
-from poketokenbar.providers.hermes import HermesProvider, _parse_database, default_home
+from poketokenbar.providers.hermes import HermesProvider, _parse_database, default_db, default_home
 
 
 def _make_db(path, rows):
@@ -188,3 +190,69 @@ def test_default_home_falls_back_to_dot_hermes(monkeypatch, tmp_path):
     monkeypatch.delenv("HERMES_HOME", raising=False)
     monkeypatch.delenv("HERMES_DATA_DIR_SUFFIX", raising=False)
     assert default_home(home=tmp_path) == tmp_path / ".hermes"
+
+
+# --- profiles/<name>/state.db (newer, multi-profile Hermes builds) --------
+
+
+def test_default_db_finds_a_profile_database_with_no_top_level_one(tmp_path):
+    # Newer Hermes builds (e.g. a named "overseer" profile) never write a
+    # top-level state.db at all — only profiles/<name>/state.db.
+    hermes_dir = tmp_path / ".hermes"
+    profile_dir = hermes_dir / "profiles" / "overseer"
+    profile_dir.mkdir(parents=True)
+    _make_db(profile_dir / "state.db", [{"id": "sess_1", "input_tokens": 1}])
+    assert default_db(home=tmp_path) == profile_dir / "state.db"
+
+
+def test_default_db_prefers_the_most_recently_written_database(tmp_path):
+    # Two profiles both have a database (e.g. mid-migration, or more than one
+    # profile genuinely in use) — the one still being written to is the real
+    # source of today's usage, not whichever sorts first.
+    hermes_dir = tmp_path / ".hermes"
+    old_profile = hermes_dir / "profiles" / "old"
+    new_profile = hermes_dir / "profiles" / "overseer"
+    old_profile.mkdir(parents=True)
+    new_profile.mkdir(parents=True)
+    _make_db(old_profile / "state.db", [{"id": "sess_1", "input_tokens": 1}])
+    _make_db(new_profile / "state.db", [{"id": "sess_1", "input_tokens": 1}])
+    now = time.time()
+    os.utime(old_profile / "state.db", (now - 3600, now - 3600))
+    os.utime(new_profile / "state.db", (now, now))
+    assert default_db(home=tmp_path) == new_profile / "state.db"
+
+
+def test_default_db_prefers_a_top_level_database_over_an_older_profile_one(tmp_path):
+    hermes_dir = tmp_path / ".hermes"
+    profile_dir = hermes_dir / "profiles" / "overseer"
+    profile_dir.mkdir(parents=True)
+    _make_db(hermes_dir / "state.db", [{"id": "sess_1", "input_tokens": 1}])
+    _make_db(profile_dir / "state.db", [{"id": "sess_1", "input_tokens": 1}])
+    now = time.time()
+    os.utime(hermes_dir / "state.db", (now, now))
+    os.utime(profile_dir / "state.db", (now - 3600, now - 3600))
+    assert default_db(home=tmp_path) == hermes_dir / "state.db"
+
+
+def test_default_db_ignores_unrelated_directories_under_profiles(tmp_path):
+    hermes_dir = tmp_path / ".hermes"
+    (hermes_dir / "profiles").mkdir(parents=True)
+    # A profile directory that genuinely has no database of its own yet.
+    (hermes_dir / "profiles" / "empty-profile").mkdir()
+    assert default_db(home=tmp_path) is None
+
+
+def test_hermes_provider_reads_a_real_profile_database_end_to_end(tmp_path):
+    hermes_dir = tmp_path / ".hermes"
+    profile_dir = hermes_dir / "profiles" / "overseer"
+    profile_dir.mkdir(parents=True)
+    now = _epoch(datetime.now(tz=timezone.utc))
+    _make_db(
+        profile_dir / "state.db",
+        [{"id": "sess_1", "started_at": now, "last_activity_at": now, "input_tokens": 500}],
+    )
+    provider = HermesProvider(home=tmp_path)
+    today = datetime.now(tz=timezone.utc).astimezone().strftime("%Y-%m-%d")
+    daily = provider.fetch_daily(today=today)
+    assert daily is not None
+    assert daily.input_tokens == 500

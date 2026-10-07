@@ -1,10 +1,11 @@
 """Hermes Agent usage — reads the local session database Hermes itself writes.
 
-Hermes keeps one SQLite database at `~/.hermes/state.db` (respecting
-`$HERMES_HOME` and `$HERMES_DATA_DIR_SUFFIX`, mirroring Hermes's own
-`get_hermes_home()`), with one row per conversation in `sessions`. Each row
-already carries that session's own cumulative token counters and
-Hermes-computed dollar cost:
+Hermes keeps one SQLite database, `state.db`, at its home directory (which
+respects `$HERMES_HOME` and `$HERMES_DATA_DIR_SUFFIX`, mirroring Hermes's own
+`get_hermes_home()`) — except that newer Hermes builds that use named
+profiles keep it at `<home>/profiles/<name>/state.db` instead, one per
+profile. Either way, each session row already carries that session's own
+cumulative token counters and Hermes-computed dollar cost:
 
     sessions.input_tokens / output_tokens / cache_read_tokens /
              cache_write_tokens / reasoning_tokens
@@ -50,7 +51,13 @@ PARSER_VERSION = 1
 
 def default_home(home: Path | None = None) -> Path:
     """`$HERMES_HOME`, else `~/.hermes<$HERMES_DATA_DIR_SUFFIX>` — Hermes's
-    own default, ported from hermes_constants.get_hermes_home()."""
+    own default, ported from hermes_constants.get_hermes_home().
+
+    ``home`` substitutes for the user's own home directory (this is how
+    tests, and the daemon's own isolation, construct a Hermes home without
+    touching the real one); it plays no part when `$HERMES_HOME` is set,
+    since that is an absolute override regardless of whose home it is.
+    """
     override = os.environ.get("HERMES_HOME", "").strip()
     if override:
         return Path(os.path.expanduser(os.path.expandvars(override)))
@@ -60,8 +67,30 @@ def default_home(home: Path | None = None) -> Path:
 
 
 def default_db(home: Path | None = None) -> Path | None:
-    db = default_home(home=home) / "state.db"
-    return db if db.is_file() else None
+    """`state.db` under this Hermes home.
+
+    Newer Hermes builds keep per-profile state at `profiles/<name>/state.db`
+    instead of (or alongside) one top-level database — e.g. an "overseer"
+    profile used for an always-on agent. Of every database that actually
+    exists, the most recently written one is the one accumulating today's
+    usage; an older file left behind by a since-completed profile migration
+    must not shadow it.
+    """
+    root = default_home(home=home)
+    candidates: list[Path] = []
+    direct = root / "state.db"
+    if direct.is_file():
+        candidates.append(direct)
+    try:
+        for child in (root / "profiles").iterdir():
+            db = child / "state.db"
+            if child.is_dir() and db.is_file():
+                candidates.append(db)
+    except OSError:
+        pass
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
 def _signature(db_path: Path) -> tuple[float, int] | None:
