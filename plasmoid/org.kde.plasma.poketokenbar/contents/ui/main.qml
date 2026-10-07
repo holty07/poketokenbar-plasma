@@ -51,6 +51,8 @@ PlasmoidItem {
         }
     }
 
+    // plasma6-only:begin — packaging/prepare-plasma5.sh drops this block:
+    // Plasmoid.contextualActions / PlasmaCore.Action are Plasma 6 API.
     Plasma5Support.DataSource {
         id: commandRunner
         engine: "executable"
@@ -75,6 +77,7 @@ PlasmoidItem {
             onTriggered: commandRunner.run("poketokenctl set floating_pet_enabled " + (petOn ? "false" : "true"))
         }
     ]
+    // plasma6-only:end
 
     compactRepresentation: CompactRepresentation {}
     fullRepresentation: FullRepresentation {}
