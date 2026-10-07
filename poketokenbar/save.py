@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 
 from . import balance
+from . import profile as _profile
 from .balance import Rarity
 from .companion import CompanionState, DexEntry, MonState
 
@@ -104,6 +105,7 @@ def _decode_mon(raw) -> MonState | None:
         else None,
         ditto_revealed=_lenient(raw, "ditto_revealed", bool, False),
         hatched_at=raw.get("hatched_at") if isinstance(raw.get("hatched_at"), (int, float)) else None,
+        profile=_profile.decode(raw.get("profile")),
     )
 
 
@@ -129,6 +131,7 @@ def _decode_dex_entry(raw) -> DexEntry | None:
         if isinstance(raw.get("raised_seconds"), (int, float))
         else None,
         released_at=_float(raw, "released_at"),
+        profile=_profile.decode(raw.get("profile")),
     )
 
 
@@ -199,6 +202,7 @@ def encode(state: CompanionState) -> dict:
             "ditto_disguise": m.ditto_disguise,
             "ditto_revealed": m.ditto_revealed,
             "hatched_at": m.hatched_at,
+            "profile": _profile.encode(m.profile),
         }
 
     return {
@@ -222,6 +226,7 @@ def encode(state: CompanionState) -> dict:
                 "caught_at": d.caught_at,
                 "raised_seconds": d.raised_seconds,
                 "released_at": d.released_at,
+                "profile": _profile.encode(d.profile),
             }
             for d in state.dex
         ],

@@ -61,8 +61,26 @@ PlasmaExtras.Representation {
                 return full.dexItems[i];
         return null;
     }
+    readonly property var selectedProfile: full.selectedEntry && full.selectedEntry.profile
+                                           ? full.selectedEntry.profile : null
     property string confirmKey: ""       // egg awaiting confirmation
     property int confirmStage: 0         // 1 = release?, 2 = precious release?
+
+    // Main-series type colours (upstream #391).
+    readonly property var typeColors: ({
+        normal: "#a8a77a", fire: "#ee8130", water: "#6390f0", electric: "#f7d02c",
+        grass: "#7ac74c", ice: "#96d9d6", fighting: "#c22e28", poison: "#a33ea1",
+        ground: "#e2bf65", flying: "#a98ff3", psychic: "#f95587", bug: "#a6b91a",
+        rock: "#b6a136", ghost: "#735797", dragon: "#6f35fc", dark: "#705746",
+        steel: "#b7b7ce", fairy: "#d685ad"
+    })
+    readonly property var statLabels: ({
+        "hp": "HP", "attack": "Atk", "defense": "Def",
+        "special-attack": "SpA", "special-defense": "SpD", "speed": "Spe"
+    })
+    function genderSymbol(g) {
+        return g === "male" ? "♂" : (g === "female" ? "♀" : "");
+    }
 
     function quantity(key, max) {
         var q = full.quantities[key] || 1;
@@ -338,6 +356,25 @@ PlasmaExtras.Representation {
                                              && full.companion.is_shiny
                                 }
 
+                                Repeater {
+                                    model: full.companion && full.companion.profile
+                                           ? full.companion.profile.types : []
+                                    Rectangle {
+                                        radius: height / 2
+                                        color: full.typeColors[modelData] || full.ctpOverlay0
+                                        implicitWidth: homeType.implicitWidth + Kirigami.Units.smallSpacing * 2
+                                        implicitHeight: homeType.implicitHeight + 2
+                                        PlasmaComponents.Label {
+                                            id: homeType
+                                            anchors.centerIn: parent
+                                            text: modelData.toUpperCase()
+                                            color: "white"
+                                            font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                            font.bold: true
+                                        }
+                                    }
+                                }
+
                                 // Repeat hatch of a graduated line grows 2× (#254).
                                 PlasmaComponents.Label {
                                     text: i18n("2× growth")
@@ -350,10 +387,20 @@ PlasmaExtras.Representation {
                             }
 
                             PlasmaComponents.Label {
-                                text: full.companion && full.companion.is_final_form
-                                      ? i18n("Final form")
-                                      : (full.companion && full.companion.nature
-                                         ? full.companion.nature : "")
+                                text: {
+                                    if (!full.companion)
+                                        return "";
+                                    var parts = [];
+                                    var p = full.companion.profile;
+                                    if (p)
+                                        parts.push(i18n("Lv. %1", p.level)
+                                                   + (p.gender ? " " + full.genderSymbol(p.gender) : ""));
+                                    if (full.companion.is_final_form)
+                                        parts.push(i18n("Final form"));
+                                    else if (full.companion.nature)
+                                        parts.push(full.companion.nature);
+                                    return parts.join(" · ");
+                                }
                                 opacity: 0.8
                             }
 
@@ -999,6 +1046,94 @@ PlasmaExtras.Representation {
                                                 + (full.selectedEntry.is_raising ? " · " + i18n("raising") : "")
                                               : ""
                                         color: full.selectedEntry ? full.rarityColor(full.selectedEntry.rarity) : "grey"
+                                    }
+
+                                    // ---- individual values (#264) ----
+                                    RowLayout {
+                                        visible: full.selectedProfile !== null
+                                        spacing: Kirigami.Units.smallSpacing
+
+                                        PlasmaComponents.Label {
+                                            text: full.selectedProfile
+                                                  ? i18n("Lv. %1", full.selectedProfile.level) + " "
+                                                    + full.genderSymbol(full.selectedProfile.gender)
+                                                  : ""
+                                            font.bold: true
+                                        }
+
+                                        Repeater {
+                                            model: full.selectedProfile ? full.selectedProfile.types : []
+                                            Rectangle {
+                                                radius: height / 2
+                                                color: full.typeColors[modelData] || full.ctpOverlay0
+                                                implicitWidth: typeLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
+                                                implicitHeight: typeLabel.implicitHeight + 2
+                                                PlasmaComponents.Label {
+                                                    id: typeLabel
+                                                    anchors.centerIn: parent
+                                                    text: modelData.toUpperCase()
+                                                    color: "white"
+                                                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                                    font.bold: true
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    PlasmaComponents.Label {
+                                        visible: full.selectedProfile !== null && full.selectedProfile.ability !== ""
+                                        text: full.selectedProfile
+                                              ? i18n("Ability: %1", full.selectedProfile.ability)
+                                                + (full.selectedProfile.ability_hidden ? " " + i18n("(hidden)") : "")
+                                              : ""
+                                        opacity: 0.8
+                                    }
+
+                                    // Computed stats once details are cached; IVs alone before that.
+                                    GridLayout {
+                                        visible: full.selectedProfile !== null
+                                        columns: 3
+                                        columnSpacing: Kirigami.Units.smallSpacing
+                                        rowSpacing: 0
+
+                                        Repeater {
+                                            model: {
+                                                var p = full.selectedProfile;
+                                                if (!p)
+                                                    return [];
+                                                if (p.stats.length > 0)
+                                                    return p.stats;
+                                                return p.ivs.map(function (iv) {
+                                                    return { name: iv.name, iv: iv.value, value: -1, base: 0 };
+                                                });
+                                            }
+
+                                            delegate: RowLayout {
+                                                spacing: 2
+                                                PlasmaComponents.Label {
+                                                    text: full.statLabels[modelData.name] || modelData.name
+                                                    opacity: 0.7
+                                                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                                    Layout.preferredWidth: Kirigami.Units.gridUnit * 1.5
+                                                }
+                                                PlasmaComponents.Label {
+                                                    text: (modelData.value >= 0 ? modelData.value + " " : "")
+                                                          + i18n("IV %1", modelData.iv)
+                                                    // A perfect IV is worth noticing.
+                                                    color: modelData.iv === 31 ? full.ctpGreen : full.ctpText
+                                                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    PlasmaComponents.Label {
+                                        visible: full.selectedProfile !== null && full.selectedProfile.moves.length > 0
+                                        text: full.selectedProfile ? i18n("Moves: %1", full.selectedProfile.moves.join(", ")) : ""
+                                        opacity: 0.8
+                                        wrapMode: Text.Wrap
+                                        Layout.fillWidth: true
+                                        font.pointSize: Kirigami.Theme.smallFont.pointSize
                                     }
 
                                     RowLayout {

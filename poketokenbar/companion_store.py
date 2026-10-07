@@ -12,7 +12,7 @@ import random
 from datetime import date as _date
 from pathlib import Path
 
-from . import balance, companion, l10n, pokeapi, save, shop, snapshots, sprites
+from . import balance, companion, l10n, pokeapi, profile, save, shop, snapshots, sprites
 from .companion import CompanionState
 from .format import compact as _compact
 
@@ -45,6 +45,101 @@ class CompanionStore:
         # notification fires immediately but the banner needs a render pass.
         self.celebration: dict | None = None
         self.last_events: companion.GrowthEvents | None = None
+        self._migrate_profiles()
+
+    def _migrate_profiles(self) -> None:
+        """One-time, offline-safe profile migration for pre-#264 saves, with a
+        snapshot of the old save taken first so it stays recoverable."""
+        needs = (self.state.active is not None and self.state.active.profile is None) or any(
+            e.profile is None for e in self.state.dex
+        )
+        if not needs:
+            return
+        target = self.save_path or save.default_path()
+        if target.is_file():
+            try:
+                snapshots.create(save.load(target), target)
+            except OSError:
+                pass
+        companion.ensure_profiles(self.state)
+        self._persist()
+
+    # Network lookups for profile details per poll. Cached species are free;
+    # this only bounds how long a first run with a big Pokédex can stall.
+    DETAIL_FETCH_BUDGET = 3
+
+    def enrich_profiles(self) -> None:
+        """Fill gender / ability / moves for profiles still missing them."""
+        if self.api is None or not hasattr(self.api, "details"):
+            return
+        budget = self.DETAIL_FETCH_BUDGET
+        targets = []
+        mon = self.state.active
+        if mon is not None and mon.profile is not None:
+            targets.append((mon.current_id, mon.profile))
+        targets += [(e.final_id, e.profile) for e in self.state.dex if e.profile is not None]
+        changed = False
+        for species_id, prof in targets:
+            details = self._cached_details(species_id)
+            if details is None:
+                if budget <= 0:
+                    continue
+                budget -= 1
+                try:
+                    details = self.api.details(species_id)
+                except pokeapi.PokeAPIError:
+                    details = None  # offline: try again on a later poll
+                if details is None:
+                    continue
+            before = (prof.gender, prof.ability_name, list(prof.moves))
+            prof.enrich(details)
+            changed = changed or before != (prof.gender, prof.ability_name, prof.moves)
+        if changed:
+            self._persist()
+
+    def _cached_details(self, species_id: int) -> dict | None:
+        lookup = getattr(self.api, "details_cached", None)
+        return lookup(species_id) if lookup is not None else None
+
+    def profile_payload(self, prof, species_id: int, nature: str | None) -> dict | None:
+        """One individual's values and computed stats. Stats need cached
+        details and are left out until those have been fetched."""
+        if prof is None:
+            return None
+        details = self._cached_details(species_id)
+        out = {
+            "level": prof.level,
+            "gender": prof.gender,
+            "ability": (prof.ability_name or "").replace("-", " "),
+            "ability_hidden": prof.ability_hidden,
+            "ivs": [{"name": s, "value": prof.ivs.get(s, 0)} for s in profile.STAT_ORDER],
+            "iv_total": sum(prof.ivs.get(s, 0) for s in profile.STAT_ORDER),
+            "moves": [m["name"].replace("-", " ") for m in prof.moves],
+            "stats": [],
+            "types": [],
+        }
+        if details:
+            out["stats"] = profile.stats(details, prof, nature)
+            out["types"] = details.get("types", [])
+            out["height_m"] = (details.get("height") or 0) / 10
+            out["weight_kg"] = (details.get("weight") or 0) / 10
+        return out
+
+    def _individual_for(self, species_id: int):
+        """(profile, nature) shown on a species' Pokédex entry: the companion
+        when it currently is that species, else the newest dex individual
+        that finished as it, else any that passed through it."""
+        mon = self.state.active
+        if mon is not None and mon.current_id == species_id and mon.profile is not None:
+            return mon.profile, mon.nature
+        by_newest = sorted(self.state.dex, key=lambda e: e.caught_at or 0, reverse=True)
+        for entry in by_newest:
+            if entry.final_id == species_id and entry.profile is not None:
+                return entry.profile, entry.nature
+        for entry in by_newest:
+            if species_id in entry.chain_order and entry.profile is not None:
+                return entry.profile, entry.nature
+        return None, None
 
     # --- usage -------------------------------------------------------------
 
@@ -93,6 +188,7 @@ class CompanionStore:
         )
         self._note_celebration(self.last_events)
         self._persist()
+        self.enrich_profiles()
 
     def _note_celebration(self, events) -> None:
         if events is None:
@@ -284,6 +380,7 @@ class CompanionStore:
             "is_shiny": mon.shows_shiny,
             "nature": mon.nature,
             "growth_boost": mon.has_growth_boost,
+            "profile": self.profile_payload(mon.profile, mon.current_id, mon.nature),
             "rarity": str(mon.rarity),
             "stage_index": mon.stage_index,
             "total_forms": mon.total_forms,
@@ -442,10 +539,15 @@ class CompanionStore:
                     "is_shiny": slot["is_shiny"],
                     "is_raising": not slot["graduated"],
                     "is_representative": species_id == self.state.representative_id,
+                    "profile": self.profile_payload(*self._profile_args(species_id)),
                     "sprite_path": sprite,
                 }
             )
         return out
+
+    def _profile_args(self, species_id: int):
+        prof, nature = self._individual_for(species_id)
+        return prof, species_id, nature
 
     def _chain(self, species_ids, shiny: bool) -> list[dict]:
         out = []
@@ -479,6 +581,8 @@ class CompanionStore:
                 "raised_text": _duration(e.raised_seconds),
                 "raising": False,
                 "released": e.released,
+                "level": e.profile.level if e.profile else None,
+                "gender": e.profile.gender if e.profile else None,
             }
             for e in self.state.dex
         ]
@@ -498,6 +602,8 @@ class CompanionStore:
                     "raised_text": "",
                     "raising": True,
                     "released": False,
+                    "level": mon.profile.level if mon.profile else None,
+                    "gender": mon.profile.gender if mon.profile else None,
                 },
             )
         return out
@@ -560,6 +666,7 @@ class CompanionStore:
             else None
         )
         incoming.last_date = self.state.last_date
+        companion.ensure_profiles(incoming)
         self.state = incoming
         self._persist()
 

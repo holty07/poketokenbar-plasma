@@ -10,6 +10,7 @@ tokens in the egg and hatches later — progress is never discarded.
 from __future__ import annotations
 
 import json
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -178,6 +179,48 @@ class PokeAPI:
         self._lines[base_species_id] = evo
         return evo
 
+    # --- battle details (#264) ----------------------------------------------
+
+    DETAILS_TTL = 30 * 86400
+
+    def _details_file(self, species_id: int) -> Path:
+        return self.cache_dir / "details" / f"{species_id}.json"
+
+    def details_cached(self, species_id: int) -> dict | None:
+        """Details from disk only — never the network. Stale is fine here:
+        base stats and learnsets don't change."""
+        try:
+            raw = json.loads(self._details_file(species_id).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return raw.get("details") if isinstance(raw, dict) else None
+
+    def details(self, species_id: int) -> dict:
+        """Default-form battle metadata: disk cache (30 days) -> REST, with a
+        stale disk copy as the offline fallback."""
+        path = self._details_file(species_id)
+        stale = None
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            stale = raw.get("details")
+            if time.time() - float(raw.get("fetched_at", 0)) < self.DETAILS_TTL and stale:
+                return stale
+        except (OSError, ValueError, TypeError, AttributeError):
+            pass
+        try:
+            mon = _get_json(f"{REST_BASE}/pokemon/{species_id}")
+            species = self.species(species_id)
+        except PokeAPIError:
+            if stale:
+                return stale
+            raise
+        details = normalize_details(species_id, mon, species)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"fetched_at": time.time(), "details": details}), encoding="utf-8")
+        tmp.replace(path)
+        return details
+
     # --- rolling -----------------------------------------------------------
 
     def roll_base_species(self, rng, tier: Rarity | None = None) -> int:
@@ -195,6 +238,50 @@ class PokeAPI:
             raise PokeAPIError("no hatch candidates")
         weights = [c.capture_rate for c in candidates]
         return rng.choices(candidates, weights=weights, k=1)[0].id
+
+
+def normalize_details(species_id: int, mon: dict, species: dict) -> dict:
+    """Keep only what profiles need. Moves are cut to the Gen V learnset at
+    the trust boundary, before memory or disk — PokéAPI's cross-generation
+    move history is ~15x larger than what is used."""
+    from .profile import VERSION_GROUP
+
+    moves = []
+    for move in mon.get("moves") or []:
+        learn = [
+            {"method": (row.get("move_learn_method") or {}).get("name", ""),
+             "level": int(row.get("level_learned_at") or 0)}
+            for row in move.get("version_group_details") or []
+            if (row.get("version_group") or {}).get("name") == VERSION_GROUP
+        ]
+        if learn:
+            moves.append({"name": (move.get("move") or {}).get("name", ""), "learn": learn})
+    moves.sort(key=lambda m: m["name"])
+    gender_rate = species.get("gender_rate")
+    return {
+        "species_id": species_id,
+        "name": mon.get("name", ""),
+        "height": mon.get("height"),
+        "weight": mon.get("weight"),
+        "gender_rate": gender_rate if isinstance(gender_rate, int) else -1,
+        "types": [
+            (t.get("type") or {}).get("name", "")
+            for t in sorted(mon.get("types") or [], key=lambda t: t.get("slot", 0))
+        ],
+        "stats": {
+            (s.get("stat") or {}).get("name", ""): s.get("base_stat", 0)
+            for s in mon.get("stats") or []
+        },
+        "abilities": sorted(
+            (
+                {"name": (a.get("ability") or {}).get("name", ""), "slot": a.get("slot", 0),
+                 "hidden": bool(a.get("is_hidden"))}
+                for a in mon.get("abilities") or []
+            ),
+            key=lambda a: a["slot"],
+        ),
+        "moves": moves,
+    }
 
 
 def _id_from_url(url: str) -> int | None:
