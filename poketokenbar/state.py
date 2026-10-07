@@ -152,6 +152,10 @@ def build(
         "strings": l10n.catalogue(config_values.get("language", "en")),
         "celebration": celebration or {},
         "snapshots": snapshots or [],
+        # Settings the popup itself toggles.
+        "settings": {
+            "floating_pet_enabled": bool(config_values.get("floating_pet_enabled", False)),
+        },
         "history": history or {},
         "burn": burn or {},
         "provider_status": provider_status or {},

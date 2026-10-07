@@ -50,6 +50,15 @@ def test_cost_of_an_unpriced_model_is_zero():
     assert pricing.cost("totally-unknown-model", 10**9, 10**9, 10**9, 10**9) == 0.0
 
 
+def test_unpriced_models_are_logged_once(capsys):
+    pricing._unpriced_seen.clear()
+    pricing.cost("brand-new-model", 1, 1, 0, 0)
+    pricing.cost("Brand-New-Model", 1, 1, 0, 0)
+    pricing.cost("grok-4", 1, 1, 0, 0)  # zero by design, not a missing row
+    err = capsys.readouterr().err
+    assert err.count("unpriced model") == 1 and "grok" not in err
+
+
 def test_claude_5_family_has_exact_rows_not_the_claude_4_fallback():
     assert pricing.rate("claude-opus-5-5").input == pytest.approx(4 / 1_000_000)
     assert pricing.rate("claude-opus-5-5").cache_read == pytest.approx(0.2 / 1_000_000)

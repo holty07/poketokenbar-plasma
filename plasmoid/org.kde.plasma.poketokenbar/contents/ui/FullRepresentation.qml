@@ -2023,6 +2023,18 @@ PlasmaExtras.Representation {
                 onClicked: runner.run("poketokenctl refresh")
             }
 
+            // Show / hide the floating pet without opening Settings (upstream #302).
+            QQC2.ToolButton {
+                readonly property bool petOn: !!(root.appState && root.appState.settings
+                                                 && root.appState.settings.floating_pet_enabled)
+                text: "🐾"
+                checkable: true
+                checked: petOn
+                onClicked: runner.run("poketokenctl set floating_pet_enabled " + (petOn ? "false" : "true"))
+                QQC2.ToolTip.visible: hovered
+                QQC2.ToolTip.text: petOn ? i18n("Hide floating pet") : i18n("Show floating pet")
+            }
+
             QQC2.ToolButton {
                 icon.name: "configure"
                 text: i18n("Settings")

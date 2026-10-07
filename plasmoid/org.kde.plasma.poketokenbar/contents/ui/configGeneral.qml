@@ -275,7 +275,8 @@ KCM.SimpleKCM {
         Kirigami.FormData.label: i18n("Size:")
         QQC2.Slider {
             id: petSize
-            from: 48; to: 192; stepSize: 8; value: 96
+            // Ceiling raised to 384 px (upstream #267).
+            from: 48; to: 384; stepSize: 8; value: 96
             Layout.preferredWidth: Kirigami.Units.gridUnit * 10
             onMoved: page.push("floating_pet_size", Math.round(value))
         }

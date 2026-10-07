@@ -7,6 +7,7 @@ price would be worse than showing none.
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 
 
@@ -142,6 +143,21 @@ def rate(model: str) -> ModelRate:
     return ZERO
 
 
+_unpriced_seen: set[str] = set()
+
+
+def note_unpriced(model: str) -> None:
+    """Log each model the table can't price, once per process (upstream
+    #361) — otherwise a new model just shows $0 and goes unnoticed. The
+    daemon's stderr lands in the journal under systemd."""
+    key = model_key(model)
+    if not key or key in _unpriced_seen:
+        return
+    _unpriced_seen.add(key)
+    print(f"poketokend: unpriced model {model!r} — its cost counts as $0 "
+          "until pricing.TABLE has a row", file=sys.stderr)
+
+
 def entry_cost(entry) -> float:
     """An entry's cost: the source-reported amount when there is one, else
     the price-table estimate."""
@@ -156,6 +172,10 @@ def cost(model: str, input_: int, output: int, cache_write: int, cache_read: int
     r = rate(model)
     key = model_key(model)
     prompt = input_ + cache_write + cache_read
+    # Grok and Antigravity are zero by design (they bill elsewhere); anything
+    # else at zero with tokens is a missing price row.
+    if r == ZERO and prompt + output > 0 and not key.startswith(("grok", "antigravity/")):
+        note_unpriced(model)
     long_context = (key in _LONG_CONTEXT_GPT and prompt > 272_000) or (
         key == "gemini-2.5-pro" and prompt > 200_000
     )
