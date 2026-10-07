@@ -20,6 +20,7 @@ KCM.SimpleKCM {
     property string title: ""
 
     property var settings: ({})
+    property var snapshots: []
 
     function push(key, value) {
         var text = (typeof value === "boolean") ? (value ? "true" : "false") : String(value);
@@ -30,6 +31,7 @@ KCM.SimpleKCM {
     // Plasma's separate copy of the defaults.
     function reload() {
         runner.read("cat $HOME/.config/poketokenbar/config.json");
+        runner.readState();
     }
 
     Component.onCompleted: reload()
@@ -40,9 +42,18 @@ KCM.SimpleKCM {
         connectedSources: []
 
         property string pending: ""
+        readonly property string stateCmd: "cat $HOME/.local/state/poketokenbar/state.json"
 
         onNewData: function(sourceName, data) {
             disconnectSource(sourceName);
+            if (sourceName === stateCmd && data["exit code"] === 0) {
+                try {
+                    page.snapshots = JSON.parse(data["stdout"]).snapshots || [];
+                } catch (e) {
+                    page.snapshots = [];
+                }
+                return;
+            }
             if (sourceName === pending && data["exit code"] === 0) {
                 try {
                     page.settings = JSON.parse(data["stdout"]);
@@ -55,6 +66,7 @@ KCM.SimpleKCM {
 
         function run(cmd) { connectSource(cmd); }
         function read(cmd) { pending = cmd; connectSource(cmd); }
+        function readState() { connectSource(stateCmd); }
     }
 
     function applySettings() {
@@ -286,6 +298,67 @@ KCM.SimpleKCM {
         text: i18n("Exports to ~/poketokenbar-save.json — Pokédex, tokens, bag, and companion")
         opacity: 0.7
         wrapMode: Text.Wrap
+    }
+
+    // Local snapshots (upstream #330): taken automatically every 12 hours,
+    // the newest ten kept, and used to recover a corrupt save.
+    RowLayout {
+        Kirigami.FormData.label: i18n("Backups:")
+
+        QQC2.Button {
+            text: i18n("Back up now")
+            onClicked: {
+                runner.run("poketokenctl snapshot");
+                snapshotRefresh.restart();
+            }
+        }
+    }
+
+    RowLayout {
+        Kirigami.FormData.label: i18n("Restore:")
+        enabled: page.snapshots.length > 0
+
+        QQC2.ComboBox {
+            id: snapshotPicker
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 14
+            model: page.snapshots.map(function (snap) {
+                return i18n("%1 — %2 in Pokédex", snap.date_text, snap.dex_count);
+            })
+        }
+
+        QQC2.Button {
+            id: restoreButton
+            property bool armed: false
+            text: armed ? i18n("Confirm restore") : i18n("Restore")
+            onClicked: {
+                if (!armed) {
+                    armed = true;
+                    restoreDisarm.restart();
+                    return;
+                }
+                armed = false;
+                var snap = page.snapshots[snapshotPicker.currentIndex];
+                if (snap)
+                    runner.run("poketokenctl restore " + snap.id);
+                snapshotRefresh.restart();
+            }
+            Timer { id: restoreDisarm; interval: 6000; onTriggered: restoreButton.armed = false }
+        }
+    }
+
+    QQC2.Label {
+        text: page.snapshots.length > 0
+              ? i18n("Restoring replaces your progress; the current save is backed up first.")
+              : i18n("No backups yet — one is taken automatically every 12 hours.")
+        opacity: 0.7
+        wrapMode: Text.Wrap
+        Layout.maximumWidth: Kirigami.Units.gridUnit * 20
+    }
+
+    Timer {
+        id: snapshotRefresh
+        interval: 4000
+        onTriggered: runner.readState()
     }
 
     }

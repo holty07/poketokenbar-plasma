@@ -62,8 +62,20 @@ class Daemon:
                         )
                         message = f"exported to {written}"
                     else:
-                        self.companion_store.state = transfer.import_from(Path(target))
+                        self.companion_store.adopt(transfer.import_from(Path(target)))
                         message = "save imported"
+                    if self.notifier is not None:
+                        self.notifier._send("PokeTokenBar", message)
+                except Exception as exc:
+                    errors.append(f"{name}: {exc}")
+            elif name in ("snapshot", "restore") and self.companion_store is not None:
+                try:
+                    if name == "snapshot":
+                        message = self.companion_store.snapshot_now()
+                    else:
+                        message = self.companion_store.restore_snapshot(
+                            str((command.get("args") or {}).get("id", ""))
+                        )
                     if self.notifier is not None:
                         self.notifier._send("PokeTokenBar", message)
                 except Exception as exc:
@@ -236,6 +248,7 @@ class Daemon:
             catch_log=self.companion_store.catch_log_payload() if self.companion_store else None,
             rarity_counts=self.companion_store.rarity_counts() if self.companion_store else None,
             catch_counts=self.companion_store.catch_rarity_counts() if self.companion_store else None,
+            snapshots=self.companion_store.snapshots_payload() if self.companion_store else None,
             periods=periods,
             burn=self.burn.payload() if self.burn is not None else None,
             provider_status=status_payload,

@@ -12,7 +12,7 @@ import random
 from datetime import date as _date
 from pathlib import Path
 
-from . import balance, companion, l10n, pokeapi, save, shop, sprites
+from . import balance, companion, l10n, pokeapi, save, shop, snapshots, sprites
 from .companion import CompanionState
 from .format import compact as _compact
 
@@ -80,6 +80,8 @@ class CompanionStore:
             if total > previous:
                 delta += total - previous
             claimed[provider_id] = total
+
+        self.auto_snapshot()
 
         if delta <= 0:
             self._persist()
@@ -525,6 +527,49 @@ class CompanionStore:
             if key in counts:
                 counts[key] += 1
         return counts
+
+    # --- snapshots (#330) ---------------------------------------------------
+
+    def _snapshot_base(self) -> Path:
+        return self.save_path or save.default_path()
+
+    def auto_snapshot(self) -> None:
+        try:
+            snapshots.auto_snapshot_if_due(self.state, self._snapshot_base())
+        except OSError:
+            pass  # a backup that can't be written must never stop the game
+
+    def snapshot_now(self) -> str:
+        snap = snapshots.create(self.state, self._snapshot_base())
+        return f"backup saved ({snap.id})"
+
+    def snapshots_payload(self) -> list[dict]:
+        try:
+            return [s.payload() for s in snapshots.list_snapshots(self._snapshot_base())]
+        except OSError:
+            return []
+
+    def adopt(self, incoming: CompanionState) -> None:
+        """Replace the save with an imported or restored one, keeping today's
+        live usage baseline. The incoming save's own baseline belongs to
+        another day or device; keeping it would re-credit (or skip) today's
+        usage on the next poll."""
+        incoming.claimed_today_tokens_by_provider = (
+            dict(self.state.claimed_today_tokens_by_provider)
+            if self.state.claimed_today_tokens_by_provider is not None
+            else None
+        )
+        incoming.last_date = self.state.last_date
+        self.state = incoming
+        self._persist()
+
+    def restore_snapshot(self, snapshot_id: str) -> str:
+        # Read and validate first: at the retention limit the safety snapshot
+        # below prunes the oldest file, which may be the one being restored.
+        incoming = snapshots.load(self._snapshot_base(), snapshot_id)
+        snapshots.create(self.state, self._snapshot_base())
+        self.adopt(incoming)
+        return "backup restored"
 
     def _persist(self) -> None:
         save.save(self.state, self.save_path)

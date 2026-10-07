@@ -245,11 +245,23 @@ def load(path: Path | None = None) -> CompanionState:
         return CompanionState()
     except (OSError, ValueError):
         _quarantine(path)
-        return CompanionState()
+        return _recover(path)
     if not isinstance(raw, dict):
         _quarantine(path)
-        return CompanionState()
+        return _recover(path)
     return decode(raw)
+
+
+def _recover(path: Path) -> CompanionState:
+    """After quarantining an unreadable save, fall back to the newest valid
+    snapshot (upstream #330) rather than a blank game."""
+    from . import snapshots  # local: snapshots -> transfer -> save
+
+    recovered = snapshots.latest_valid(path)
+    if recovered is None:
+        return CompanionState()
+    save(recovered, path)
+    return recovered
 
 
 def _quarantine(path: Path) -> None:
