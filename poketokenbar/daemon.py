@@ -286,10 +286,16 @@ class Daemon:
 
 def main() -> int:
     from .providers.antigravity import AntigravityProvider
+    from .providers.aside import AsideProvider
     from .providers.claude import ClaudeProvider
     from .providers.codex import CodexProvider
+    from .providers.cursor import CursorProvider
     from .providers.hermes import HermesProvider
+    from .providers.kimi_code import KimiCodeProvider
+    from .providers.kiro import KiroProvider
+    from .providers.omp import OmpProvider
     from .providers.opencode import OpencodeProvider
+    from .providers.pi import PiProvider
 
     cache_base = os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")
     cache = ScanCache(Path(cache_base) / "poketokenbar" / "scan.db")
@@ -303,6 +309,12 @@ def main() -> int:
             AntigravityProvider(cache=cache),
             OpencodeProvider(cache=cache),
             HermesProvider(cache=cache),
+            KimiCodeProvider(cache=cache),
+            PiProvider(cache=cache),
+            OmpProvider(cache=cache),
+            AsideProvider(cache=cache),
+            KiroProvider(cache=cache),
+            CursorProvider(cache=cache),
         ],
         # Official Claude usage limits are disabled for now — this desktop
         # widget no longer needs to fetch or show them. Pass LimitsSource()

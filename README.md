@@ -91,7 +91,13 @@ A second widget puts your companion on the desktop at any size from 48 to 192px.
 | **Antigravity** | ✅ token counts only — subscription-billed, reports no cost |
 | **OpenCode** | ✅ reads opencode's own session database directly |
 | **Hermes Agent** | ✅ reads Hermes's own session database directly |
-| Gemini CLI, Cursor, Grok CLI, Copilot CLI, Kiro CLI | ❌ not ported — see [What's missing](#whats-missing) |
+| **Kimi Code** | ✅ token counts from its `wire.jsonl` usage records — records no cost |
+| **Pi** | ✅ reads Pi's session JSONL, including its own cost estimate |
+| **omp (oh-my-pi)** | ✅ reads omp's session JSONL, including its own cost estimate |
+| **Aside** | ✅ reads Aside's per-profile state database, including its own cost |
+| **Kiro CLI** | ✅ estimated tokens (bytes/4 of resent conversation text) — Kiro stores no token counts or cost |
+| **Cursor** | ✅ Cursor's dashboard usage API when signed in (real tokens and cost), else local chat-bubble token counts |
+| Gemini CLI, Grok CLI, Copilot CLI | ❌ not ported — see [What's missing](#whats-missing) |
 
 ## Install
 
@@ -143,6 +149,12 @@ For the desktop pet, add **PokeTokenBar Pet** to your desktop.
 | `~/.gemini/antigravity{,-cli,-ide}/conversations/*.db` | Antigravity usage (per-conversation SQLite, protobuf token ledger) |
 | `~/.local/share/opencode/opencode.db` | opencode usage (also `$XDG_DATA_HOME/opencode`) |
 | `~/.hermes/state.db` | Hermes Agent usage (also `$HERMES_HOME`) |
+| `~/.kimi-code/sessions/**/wire.jsonl` | Kimi Code usage (also `$KIMI_CODE_HOME`) |
+| `~/.pi/agent/sessions/**/*.jsonl` | Pi usage (also `$PI_CODING_AGENT_DIR`, `$PI_CODING_AGENT_SESSION_DIR`) |
+| `~/.omp/agent/sessions/**/*.jsonl` | omp usage (also `$OMP_CODING_AGENT_DIR`; `bridge/` copies skipped) |
+| `~/.aside/u/*/state.db` | Aside usage (turn token aggregates only) |
+| `~/.local/share/kiro-cli/data.sqlite3`, `~/.kiro/sessions/**` | Kiro CLI usage (also `$KIRO_CLI_HOME`, `$KIRO_HOME`) |
+| `~/.config/Cursor/User/globalStorage/state.vscdb` | Cursor login token and local bubble usage (also `Cursor Nightly`, `$CURSOR_DATA_DIR`) |
 | `~/.claude/.credentials.json` | OAuth token for official limits |
 | `~/.claude.json` | which account those limits belong to |
 | [PokéAPI](https://pokeapi.co/) + [PokeAPI/sprites](https://github.com/PokeAPI/sprites) | species, evolution chains, sprites — fetched at runtime, cached locally |
@@ -159,7 +171,7 @@ Where the app keeps its own state:
 ## Privacy & permissions
 
 - **Everything is local.** Token counts come from log files already on your disk. No telemetry, no analytics, no account of ours.
-- **Two network calls, both optional.** PokéAPI for species data and GitHub for sprites. If either fails, token counts keep working. (A third, `api.anthropic.com/api/oauth/usage` for official usage limits, exists in the code but is currently disabled — see the note under [Why](#why).)
+- **Few network calls, all optional.** PokéAPI for species data and GitHub for sprites. If you are signed in to Cursor, its usage is read from Cursor's own dashboard endpoint (`cursor.com/api/dashboard/get-filtered-usage-events`, at most every five minutes, with the login token Cursor keeps in `state.vscdb`; set `CURSOR_USAGE_API=0` to keep Cursor local-only). If any of these fail, token counts keep working. (Another, `api.anthropic.com/api/oauth/usage` for official usage limits, exists in the code but is currently disabled — see the note under [Why](#why).)
 - **Nothing is bundled.** No Pokémon sprites or data ship in this repository; they're fetched at runtime and cached under `~/.cache`.
 
 ### If you use several Claude accounts
@@ -170,7 +182,7 @@ Session logs carry **no account marker**, so token totals from every account on 
 
 Compared to the macOS original:
 
-- **Five of the ten usage providers.** Claude Code, Codex, Antigravity, opencode, and Hermes Agent are ported. I have no data for the others, so porting them would mean shipping parsers nobody could verify. The provider interface is unchanged — each is one file when someone who uses one wants to add it.
+- **Some usage providers.** Claude Code, Codex, Antigravity, opencode, Hermes Agent, Kimi Code, Pi, omp, Aside, Kiro CLI and Cursor are ported (the last six from upstream's parsers and test fixtures, without real Linux data to verify against). Gemini CLI, Grok CLI and Copilot CLI are not. Cursor's remaining-included-usage limits panel is not ported either. The provider interface is unchanged — each is one file when someone who uses one wants to add it.
 - **Antigravity's official rate limits.** The Swift original also polls Google's quota endpoint (`AntigravityRateLimitsProvider`) for a 5-hour/weekly percentage. Not ported here — it needs a second, per-provider limits pipeline (today's `LimitsSource` is Claude-only) plus OAuth token handling, so it's out of scope for the usage-provider port. Token counts and cost (always $0 — subscription-billed) work today without it.
 - In-app updater, crash reporter, and Keychain handling — macOS concepts with no Linux equivalent, or unnecessary here.
 - A diagnostics / log viewer.
