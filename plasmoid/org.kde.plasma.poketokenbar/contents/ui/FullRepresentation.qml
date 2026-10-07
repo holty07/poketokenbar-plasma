@@ -195,14 +195,78 @@ PlasmaExtras.Representation {
         return "$" + (v ? v.toFixed(2) : "0.00");
     }
 
+    // ---- search, sort and filters (upstream #329) ----
+    property string dexSearch: ""
+    property bool shinyOnly: false
+    property int dexSort: 0        // see dexSortModes
+    property int logSort: 0        // see logSortModes
+    readonly property var dexSortModes: [i18n("No. ↑"), i18n("No. ↓"), i18n("Name A–Z"),
+                                         i18n("Name Z–A"), i18n("Rarity")]
+    readonly property var logSortModes: [i18n("Newest"), i18n("Oldest"), i18n("No. ↑"),
+                                         i18n("Name A–Z"), i18n("Rarity")]
+    readonly property bool filtering: full.dexSearch !== "" || full.shinyOnly || full.rarityFilter !== ""
+
+    // Case- and accent-insensitive, shared by both lists, so "pokemon"
+    // finds "Pokémon"; "#25" or "25" matches by number.
+    function fold(text) {
+        return String(text || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    }
+    function matchesSearch(name, number) {
+        var q = full.fold(full.dexSearch).trim();
+        if (q === "")
+            return true;
+        var digits = q.replace(/^#/, "");
+        if (/^\d+$/.test(digits))
+            return String(number) === String(parseInt(digits, 10));
+        return full.fold(name).indexOf(q) !== -1;
+    }
+    function rarityRank(r) {
+        return { legendary: 0, rare: 1, uncommon: 2, common: 3 }[r] !== undefined
+               ? { legendary: 0, rare: 1, uncommon: 2, common: 3 }[r] : 4;
+    }
+    function resetFilters() {
+        full.dexSearch = "";
+        full.shinyOnly = false;
+        full.rarityFilter = "";
+        full.dexPage = 0;
+    }
+
     function filteredDex() {
-        if (!full.rarityFilter)
-            return full.dexItems;
-        var out = [];
-        for (var i = 0; i < full.dexItems.length; i++)
-            if (full.dexItems[i].rarity === full.rarityFilter)
-                out.push(full.dexItems[i]);
-        return out;
+        var out = full.dexItems.filter(function (d) {
+            return (!full.rarityFilter || d.rarity === full.rarityFilter)
+                && (!full.shinyOnly || d.is_shiny)
+                && full.matchesSearch(d.name, d.species_id);
+        });
+        var byName = function (a, b) { return full.fold(a.name).localeCompare(full.fold(b.name)); };
+        var sorters = [
+            function (a, b) { return a.species_id - b.species_id; },
+            function (a, b) { return b.species_id - a.species_id; },
+            byName,
+            function (a, b) { return byName(b, a); },
+            function (a, b) { return full.rarityRank(a.rarity) - full.rarityRank(b.rarity)
+                                     || a.species_id - b.species_id; }
+        ];
+        return out.sort(sorters[full.dexSort] || sorters[0]);
+    }
+
+    function filteredLog() {
+        var last = function (e) { return e.chain.length ? e.chain[e.chain.length - 1] : {}; };
+        var out = full.catchLog.filter(function (e) {
+            return (!full.rarityFilter || e.rarity === full.rarityFilter)
+                && (!full.shinyOnly || e.is_shiny)
+                && e.chain.some(function (c) { return full.matchesSearch(c.name, c.species_id); });
+        });
+        var sorters = [
+            function (a, b) { return (b.caught_at || 0) - (a.caught_at || 0); },
+            function (a, b) { return (a.caught_at || 0) - (b.caught_at || 0); },
+            function (a, b) { return (last(a).species_id || 0) - (last(b).species_id || 0); },
+            function (a, b) { return full.fold(last(a).name).localeCompare(full.fold(last(b).name)); },
+            function (a, b) { return full.rarityRank(a.rarity) - full.rarityRank(b.rarity); }
+        ];
+        // The companion being raised stays on top, as in the macOS app.
+        var raising = out.filter(function (e) { return e.raising; });
+        var rest = out.filter(function (e) { return !e.raising; });
+        return raising.concat(rest.sort(sorters[full.logSort] || sorters[0]));
     }
 
     function pagedDex() {
@@ -415,6 +479,25 @@ PlasmaExtras.Representation {
                                        : 0
                                 fillColor: full.ctpSapphire
                                 trackColor: full.ctpSurface0
+
+                                // Exact numbers on hover (#392): "X / Y · Z%".
+                                MouseArea {
+                                    id: growthHover
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                }
+                                QQC2.ToolTip.visible: growthHover.containsMouse && full.companion !== null
+                                QQC2.ToolTip.delay: 300
+                                QQC2.ToolTip.text: {
+                                    var c = full.companion;
+                                    if (!c)
+                                        return "";
+                                    var used = c.stage === "egg" ? c.egg_usage : c.used_at_stage;
+                                    var total = c.stage === "egg" ? c.egg_usage + c.remaining_tokens
+                                                                  : c.stage_threshold;
+                                    var pct = total > 0 ? Math.min(100, Math.floor(used * 100 / total)) : 0;
+                                    return full.grouped(used) + " / " + full.grouped(total) + " · " + pct + "%";
+                                }
                             }
 
                             PlasmaComponents.Label {
@@ -784,6 +867,15 @@ PlasmaExtras.Representation {
                                 }
 
                                 PlasmaComponents.Label {
+                                    // Eggs stay listed while incubating, just not buyable (#261).
+                                    text: i18n("Available once your current egg hatches.")
+                                    visible: modelData.locked === true
+                                    color: full.ctpPeach
+                                    wrapMode: Text.Wrap
+                                    Layout.fillWidth: true
+                                }
+
+                                PlasmaComponents.Label {
                                     // A released Pokémon keeps its Pokédex entry (#242, #291).
                                     text: i18n("Your current Pokémon is released but stays in your Pokédex.")
                                     visible: modelData.kind === "egg" && full.companion !== null
@@ -855,10 +947,17 @@ PlasmaExtras.Representation {
             ColumnLayout {
                 spacing: Kirigami.Units.smallSpacing
 
-                PlasmaComponents.Label {
-                    text: i18n("Your bag is empty.")
+                RowLayout {
                     visible: full.bagItems.length === 0
-                    opacity: 0.7
+                    PlasmaComponents.Label {
+                        text: i18n("Your bag is empty.")
+                        opacity: 0.7
+                    }
+                    // A way out of the dead end (#366).
+                    QQC2.Button {
+                        text: i18n("Visit the shop")
+                        onClicked: tabs.currentIndex = 1
+                    }
                 }
 
                 Repeater {
@@ -963,6 +1062,46 @@ PlasmaExtras.Representation {
                     Layout.fillWidth: true
                     QQC2.TabButton { text: i18n("Pokédex") }
                     QQC2.TabButton { text: i18n("Catch log") }
+                }
+
+                // search, sort and shiny-only (upstream #329), shared by both sub-tabs
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
+
+                    Kirigami.SearchField {
+                        Layout.fillWidth: true
+                        placeholderText: i18n("Search name or #number")
+                        text: full.dexSearch
+                        onTextChanged: {
+                            full.dexSearch = text;
+                            full.dexPage = 0;
+                        }
+                    }
+
+                    QQC2.ComboBox {
+                        model: collectionTabs.currentIndex === 1 ? full.logSortModes : full.dexSortModes
+                        currentIndex: collectionTabs.currentIndex === 1 ? full.logSort : full.dexSort
+                        onActivated: function (index) {
+                            if (collectionTabs.currentIndex === 1)
+                                full.logSort = index;
+                            else
+                                full.dexSort = index;
+                            full.dexPage = 0;
+                        }
+                    }
+
+                    QQC2.Button {
+                        checkable: true
+                        checked: full.shinyOnly
+                        text: "✨"
+                        QQC2.ToolTip.text: i18n("Shiny only")
+                        QQC2.ToolTip.visible: hovered
+                        onClicked: {
+                            full.shinyOnly = !full.shinyOnly;
+                            full.dexPage = 0;
+                        }
+                    }
                 }
 
                 // rarity filters, shared by both sub-tabs
@@ -1192,6 +1331,16 @@ PlasmaExtras.Representation {
                                             onClicked: runner.run("poketokenctl pin "
                                                                   + (pinned ? "none" : full.selectedEntry.species_id))
                                         }
+                                        // Both appearances owned: choose which one the panel shows (#345).
+                                        QQC2.Button {
+                                            visible: full.selectedEntry !== null && full.selectedEntry.has_normal
+                                                     && full.selectedEntry.has_shiny
+                                            readonly property bool showingShiny: full.selectedEntry !== null
+                                                && full.selectedEntry.representative_shiny !== false
+                                            text: showingShiny ? i18n("Show normal") : i18n("Show shiny ✨")
+                                            onClicked: runner.run("poketokenctl pin " + full.selectedEntry.species_id
+                                                                  + (showingShiny ? " --normal" : " --shiny"))
+                                        }
                                         QQC2.Button {
                                             text: i18n("Close")
                                             onClicked: full.selectedSpecies = -1
@@ -1207,9 +1356,26 @@ PlasmaExtras.Representation {
                             opacity: 0.7
                         }
 
+                        RowLayout {
+                            visible: full.dexItems.length > 0 && full.filteredDex().length === 0
+                            PlasmaComponents.Label { text: i18n("No matches."); opacity: 0.7 }
+                            QQC2.Button { text: i18n("Reset filters"); onClicked: full.resetFilters() }
+                        }
+
                         GridLayout {
                             Layout.fillWidth: true
                             columns: 4
+
+                            // The scroll wheel turns pages (#393).
+                            WheelHandler {
+                                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                                onWheel: function (event) {
+                                    if (event.angleDelta.y < 0 && full.dexPage < full.dexPageCount() - 1)
+                                        full.dexPage = full.dexPage + 1;
+                                    else if (event.angleDelta.y > 0 && full.dexPage > 0)
+                                        full.dexPage = full.dexPage - 1;
+                                }
+                            }
                             columnSpacing: Kirigami.Units.smallSpacing
                             rowSpacing: Kirigami.Units.smallSpacing
 
@@ -1224,7 +1390,8 @@ PlasmaExtras.Representation {
 
                                         PlasmaComponents.Label {
                                             text: "#" + modelData.final_id
-                                            opacity: 0.6
+                                            // Rarity reads at a glance in the unfiltered view (#343).
+                                            color: full.rarityColor(modelData.rarity)
                                             font.pointSize: Kirigami.Theme.smallFont.pointSize
                                         }
 
@@ -1258,8 +1425,14 @@ PlasmaExtras.Representation {
                                         Layout.preferredWidth: Kirigami.Units.gridUnit * 2.5
                                         Layout.preferredHeight: Kirigami.Units.gridUnit * 2.5
 
+                                        // Lift on hover to show it is clickable (#343).
+                                        scale: cellHover.containsMouse ? 1.08 : 1.0
+                                        Behavior on scale { NumberAnimation { duration: 120 } }
+
                                         MouseArea {
+                                            id: cellHover
                                             anchors.fill: parent
+                                            hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: full.selectedSpecies =
                                                 full.selectedSpecies === modelData.species_id ? -1 : modelData.species_id
@@ -1336,12 +1509,10 @@ PlasmaExtras.Representation {
                             }
 
                             Repeater {
-                                model: full.catchLog
+                                model: full.filteredLog()
 
                                 ColumnLayout {
                                     Layout.fillWidth: true
-                                    visible: full.rarityFilter === ""
-                                             || modelData.rarity === full.rarityFilter
                                     spacing: 2
 
                                     RowLayout {
