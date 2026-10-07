@@ -1,6 +1,6 @@
 import random
 
-from poketokenbar import balance
+from poketokenbar import balance, companion
 from poketokenbar.balance import Rarity
 from poketokenbar.companion import (
     CompanionState,
@@ -62,7 +62,12 @@ def test_hatching_consumes_a_premium_egg_guarantee():
 
 def _hatched(forms=3, rarity=Rarity.COMMON):
     s = _state()
-    apply_usage(s, balance.EGG_HATCH_THRESHOLD, line_for_egg=_line(forms, rarity))
+    # Seeded: unseeded, 1 run in 128 hatched a disguised Ditto and the
+    # chain assertions failed at random.
+    apply_usage(
+        s, balance.EGG_HATCH_THRESHOLD, line_for_egg=_line(forms, rarity), rng=random.Random(0)
+    )
+    assert s.active.ditto_disguise is None
     return s
 
 
@@ -191,3 +196,79 @@ def test_current_id_survives_empty_path_ids():
 def test_current_id_clamps_an_out_of_range_stage():
     mon = MonState(base_id=1, path_ids=[1, 2], planned_path_ids=[1, 2], stage_index=99)
     assert mon.current_id == 2
+
+
+# --- upstream ports: repeat boost, difficulty, Ditto -----------------------
+
+
+def _line3():
+    return EvoLine(base_id=1, path_ids=[1, 2, 3], rarity=Rarity.COMMON)
+
+
+def test_repeat_hatch_of_a_graduated_line_grows_twice_as_fast():
+    s = CompanionState()
+    apply_usage(s, balance.EGG_HATCH_THRESHOLD, line_for_egg=_line3(), rng=random.Random(1))
+    assert s.active.has_growth_boost is False
+    normal = s.stage_threshold(s.active)
+    s.collected_finals.add("1-3")
+    s.active = None
+    s.egg_usage = 0
+    apply_usage(s, balance.EGG_HATCH_THRESHOLD, line_for_egg=_line3(), rng=random.Random(1))
+    assert s.active.has_growth_boost is True
+    assert s.stage_threshold(s.active) == round(normal / 2)
+
+
+def test_growth_difficulty_scales_egg_and_stage_thresholds():
+    s = CompanionState()
+    s.growth_difficulty = 0.5
+    assert s.egg_threshold() == balance.EGG_HATCH_THRESHOLD // 2
+    apply_usage(s, s.egg_threshold(), line_for_egg=_line3(), rng=random.Random(1))
+    assert s.active is not None
+    assert s.stage_threshold(s.active) == round(s.active.phase_threshold * 0.5)
+
+
+def test_changing_difficulty_keeps_the_earned_fraction_without_evolving():
+    s = CompanionState()
+    apply_usage(s, balance.EGG_HATCH_THRESHOLD, line_for_egg=_line3(), rng=random.Random(1))
+    threshold = s.stage_threshold(s.active)
+    s.active.used_at_stage = threshold // 2
+    assert companion.set_growth_difficulty(s, 2.0) is True
+    assert s.active.used_at_stage == threshold  # half of a doubled threshold
+    assert s.active.stage_index == 0
+    # Almost done at hard difficulty must not complete at easy difficulty.
+    s.active.used_at_stage = s.stage_threshold(s.active) - 1
+    companion.set_growth_difficulty(s, 0.1)
+    assert s.active.used_at_stage < s.stage_threshold(s.active)
+
+
+def test_difficulty_is_clamped():
+    assert balance.clamp_difficulty(0) == balance.DIFFICULTY_MIN
+    assert balance.clamp_difficulty(99) == balance.DIFFICULTY_MAX
+    assert balance.clamp_difficulty(float("nan")) == balance.DEFAULT_DIFFICULTY
+    assert balance.clamp_difficulty("junk") == balance.DEFAULT_DIFFICULTY
+
+
+def test_revealed_ditto_recomputes_its_boost_from_ditto_itself():
+    s = CompanionState()
+    s.collected_finals.add("1-3")  # the disguise's line was completed...
+    apply_usage(s, balance.EGG_HATCH_THRESHOLD, line_for_egg=_line3(), rng=random.Random(1))
+    s.active.ditto_disguise = 1
+    assert s.active.has_growth_boost is True
+    events = apply_usage(s, s.stage_threshold(s.active))
+    assert events.ditto_revealed
+    assert s.active.has_growth_boost is False  # ...but Ditto's never was
+
+
+def test_disguised_ditto_hides_its_shine_until_revealed():
+    s = CompanionState()
+    apply_usage(s, balance.EGG_HATCH_THRESHOLD, line_for_egg=_line3(), rng=random.Random(1))
+    s.active.is_shiny = True
+    s.active.ditto_disguise = 1
+    assert s.active.shows_shiny is False
+    s.active.ditto_revealed = True
+    assert s.active.shows_shiny is True
+
+
+def test_shiny_denominator_follows_the_charm():
+    assert balance.shiny_denominator(False) == balance.SHINY_DENOMINATOR
+    assert balance.shiny_denominator(True) == balance.SHINY_CHARM_DENOMINATOR

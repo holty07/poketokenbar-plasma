@@ -106,6 +106,8 @@ def build(
     burn: dict | None = None,
     provider_status: dict | None = None,
     celebration: dict | None = None,
+    snapshots: list | None = None,
+    history: dict | None = None,
 ) -> dict:
     total_tokens = sum(d.total_tokens for d in daily_by_provider.values())
     total_cost = sum(d.total_cost for d in daily_by_provider.values())
@@ -149,6 +151,12 @@ def build(
         "periods": periods or {},
         "strings": l10n.catalogue(config_values.get("language", "en")),
         "celebration": celebration or {},
+        "snapshots": snapshots or [],
+        # Settings the popup itself toggles.
+        "settings": {
+            "floating_pet_enabled": bool(config_values.get("floating_pet_enabled", False)),
+        },
+        "history": history or {},
         "burn": burn or {},
         "provider_status": provider_status or {},
         "panel": {
@@ -181,7 +189,10 @@ def build(
             )
             if config_values.get("show_limit_in_menu")
             else [],
-            "sprite_path": (companion_payload or {}).get("sprite_path", ""),
+            # A pinned representative (#158) replaces the companion in the
+            # panel; unpinned, the panel shows the companion as before.
+            "sprite_path": (companion_payload or {}).get("representative_sprite_path")
+            or (companion_payload or {}).get("sprite_path", ""),
         },
     }
 

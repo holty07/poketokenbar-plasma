@@ -6,11 +6,41 @@ one changes the game, so they are copied rather than re-derived.
 
 from __future__ import annotations
 
+import math
 from enum import StrEnum
 
 # Tokens the egg must absorb before it hatches. Overflow carries into the
 # hatchling rather than being discarded.
 EGG_HATCH_THRESHOLD = 5_000_000
+
+# A hatch whose line you have already graduated grows this many times faster
+# (upstream #254), so repeats don't feel like a grind.
+REPEAT_GROWTH_MULTIPLIER = 2
+
+# User difficulty multipliers (upstream #244). Below 1 grows faster / costs
+# less, above 1 slower / dearer. Applied at the consumption sites, never to the
+# tables: graded egg prices derive from a ratio of GRADUATION_TOTAL, so scaling
+# the table would let the growth slider move shop prices too.
+DIFFICULTY_MIN = 0.1
+DIFFICULTY_MAX = 2.0
+DEFAULT_DIFFICULTY = 1.0
+
+
+def clamp_difficulty(value) -> float:
+    """Clamp a stored multiplier. Config is hand-editable, so 0, negatives and
+    NaN are real inputs — and a 0 multiplier means a 0 threshold, which turns
+    progress into a division by zero and evolution into an endless loop."""
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return DEFAULT_DIFFICULTY
+    if not math.isfinite(value):
+        return DEFAULT_DIFFICULTY
+    return min(max(value, DIFFICULTY_MIN), DIFFICULTY_MAX)
+
+
+def scaled(base: int, difficulty: float) -> int:
+    return round(base * clamp_difficulty(difficulty))
 
 
 class Rarity(StrEnum):
@@ -62,7 +92,9 @@ def graduation_total(rarity: Rarity) -> int:
     return GRADUATION_TOTAL[Rarity(rarity)]
 
 
-def phase_threshold(rarity: Rarity, total_forms: int, stage_index: int) -> int:
+def phase_threshold(
+    rarity: Rarity, total_forms: int, stage_index: int, growth_multiplier: int = 1
+) -> int:
     """Tokens needed at a stage before the next evolution or graduation.
 
     Weighted so later stages cost more while the sum over all stages equals the
@@ -73,7 +105,8 @@ def phase_threshold(rarity: Rarity, total_forms: int, stage_index: int) -> int:
     i = stage_index + 1  # 1-based
     total = float(graduation_total(rarity))
     denom = (k * (k + 1)) / 2.0
-    return round(total * i / denom)
+    standard = round(total * i / denom)
+    return max(1, round(standard / max(1, growth_multiplier)))
 
 
 # --- items -----------------------------------------------------------------
@@ -112,6 +145,34 @@ def egg_price(tier: Rarity | None) -> int:
 SHINY_DENOMINATOR = 64
 DITTO_DISGUISE_DENOMINATOR = 128
 DITTO_SPECIES_ID = 132
+
+
+# Unown (#201) has 28 collectible letter forms (upstream #288).
+UNOWN_SPECIES_ID = 201
+UNOWN_FORMS = [chr(c) for c in range(ord("a"), ord("z") + 1)] + ["exclamation", "question"]
+
+
+def unown_symbol(form: str) -> str:
+    return {"exclamation": "!", "question": "?"}.get(form, form.upper())
+
+
+def resolved_unown_form(species_id: int, form: str | None) -> str | None:
+    """The letter a species shows: None for anything but Unown, and A for
+    an Unown recorded before letters existed (its old appearance)."""
+    if species_id != UNOWN_SPECIES_ID:
+        return None
+    return form if form in UNOWN_FORMS else "a"
+
+
+def collection_weight(weight: int, collected: bool) -> int:
+    """Halve what you already have, never to zero (upstream CollectionWeight):
+    a nudge toward new things that still leaves repeats and shiny hunts open."""
+    return max(1, weight // 2) if collected else max(1, weight)
+
+
+def shiny_denominator(has_charm: bool) -> int:
+    """Single source for the roll and the odds quoted in notifications (#351)."""
+    return SHINY_CHARM_DENOMINATOR if has_charm else SHINY_DENOMINATOR
 
 # PokeAPI item sprite names; None means no sprite exists and the UI falls back
 # to an emoji. Mint is a Gen-VIII item PokeAPI has no sprite for.

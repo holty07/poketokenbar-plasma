@@ -11,7 +11,7 @@ class FakeAPI:
         self.forms, self.rarity, self.broken = forms, rarity, broken
         self.rolls = 0
 
-    def roll_base_species(self, rng, tier=None):
+    def roll_base_species(self, rng, tier=None, collected_bases=None):
         if self.broken:
             from poketokenbar.pokeapi import PokeAPIError
 
@@ -127,3 +127,94 @@ def test_mon_payload_reports_stage_progress(tmp_path):
     assert payload["stage_index"] == 0
     assert payload["stage_threshold"] > 0
     assert payload["species_id"] >= 1
+
+
+def _hatched(tmp_path):
+    s = _store(tmp_path)
+    s.update({"claude_code": balance.EGG_HATCH_THRESHOLD}, today="2026-08-18")
+    assert s.state.active is not None
+    return s
+
+
+def test_representative_pin_requires_ownership_and_survives_release(tmp_path):
+    import pytest
+
+    s = _hatched(tmp_path)
+    with pytest.raises(ValueError):
+        s.set_representative(999)
+    s.set_representative(1)
+    assert s.state.representative_id == 1
+    # Released by an egg: species 1 is still owned, so the pin stays valid.
+    s.state.used_since_install = balance.FRESH_EGG_PRICE
+    s.buy("egg")
+    assert 1 in s.owned_species()
+    s.set_representative(None)
+    assert s.state.representative_id is None
+
+
+def test_payload_hides_a_disguised_dittos_shine(tmp_path):
+    s = _hatched(tmp_path)
+    s.state.active.is_shiny = True
+    s.state.active.ditto_disguise = 1
+    assert s.payload()["is_shiny"] is False
+    assert s.catch_log_payload()[0]["is_shiny"] is False
+    assert all(not row["is_shiny"] for row in s.dex_payload())
+
+
+def test_payload_uses_difficulty_scaled_thresholds(tmp_path):
+    s = _store(tmp_path)
+    s.apply_difficulty(0.5, 1.0)
+    assert s.payload()["remaining_tokens"] == balance.EGG_HATCH_THRESHOLD // 2
+    s.update({"claude_code": balance.EGG_HATCH_THRESHOLD // 2}, today="2026-08-18")
+    assert s.state.active is not None
+    mon = s.state.active
+    assert s.payload()["stage_threshold"] == round(mon.phase_threshold * 0.5)
+
+
+def test_shop_and_bag_payloads_expose_bulk_fields(tmp_path):
+    s = _hatched(tmp_path)
+    s.state.used_since_install = balance.MINT_PRICE * 4
+    mint = next(row for row in s.shop_payload() if row["key"] == "mint")
+    assert mint["stackable"] is True and mint["max_count"] == 4
+    s.state.inventory["rareCandy"] = 2
+    candy = next(row for row in s.bag_payload() if row["key"] == "rareCandy")
+    assert [p["count"] for p in candy["previews"]] == [1, 2]
+
+
+def test_catch_log_marks_released_entries(tmp_path):
+    s = _hatched(tmp_path)
+    s.state.used_since_install = balance.FRESH_EGG_PRICE
+    s.buy("egg")
+    assert s.catch_log_payload()[0]["released"] is True
+
+
+def test_only_the_current_stage_is_marked_raising(tmp_path):
+    s = _hatched(tmp_path)
+    s.state.active.stage_index = 1
+    rows = {r["species_id"]: r for r in s.dex_payload()}
+    assert rows[2]["is_raising"] is True
+    assert rows[1]["is_raising"] is False
+
+
+def test_representative_appearance_can_be_chosen_when_both_are_owned(tmp_path):
+    import pytest
+
+    from poketokenbar.companion import DexEntry
+
+    s = _hatched(tmp_path)
+    s.state.dex.append(DexEntry(base_id=1, final_id=1, chain_order=[1], rarity=Rarity.COMMON,
+                                is_shiny=True))
+    row = next(r for r in s.dex_payload() if r["species_id"] == 1)
+    assert row["has_normal"] and row["has_shiny"]
+    s.set_representative(1, shiny=False)
+    assert s.state.representative_shiny is False
+    with pytest.raises(ValueError):
+        s.set_representative(2, shiny=True)  # never owned shiny
+    assert s.state.representative_id == 1  # the rejected pin changed nothing
+
+
+def test_shop_lists_eggs_as_locked_while_incubating(tmp_path):
+    s = _store(tmp_path)
+    s.state.used_since_install = balance.FRESH_EGG_PRICE * 5
+    egg = next(r for r in s.shop_payload() if r["key"] == "egg")
+    assert egg["locked"] is True and egg["affordable"] is False

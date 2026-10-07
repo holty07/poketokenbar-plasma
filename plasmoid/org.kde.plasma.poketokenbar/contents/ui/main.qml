@@ -1,6 +1,7 @@
 import QtQuick
 import Qt.labs.platform as Platform
 import org.kde.plasma.plasmoid
+import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasma5support as Plasma5Support
 
 PlasmoidItem {
@@ -49,6 +50,34 @@ PlasmoidItem {
             }
         }
     }
+
+    // plasma6-only:begin — packaging/prepare-plasma5.sh drops this block:
+    // Plasmoid.contextualActions / PlasmaCore.Action are Plasma 6 API.
+    Plasma5Support.DataSource {
+        id: commandRunner
+        engine: "executable"
+        connectedSources: []
+        onNewData: function(sourceName, data) { disconnectSource(sourceName); }
+        function run(cmd) { connectSource(cmd); }
+    }
+
+    // Right-click menu on the panel item (upstream #373), next to Plasma's
+    // own Configure entry.
+    Plasmoid.contextualActions: [
+        PlasmaCore.Action {
+            text: i18n("Refresh now")
+            icon.name: "view-refresh"
+            onTriggered: commandRunner.run("poketokenctl refresh")
+        },
+        PlasmaCore.Action {
+            readonly property bool petOn: !!(root.appState && root.appState.settings
+                                             && root.appState.settings.floating_pet_enabled)
+            text: petOn ? i18n("Hide floating pet") : i18n("Show floating pet")
+            icon.name: "face-smile"
+            onTriggered: commandRunner.run("poketokenctl set floating_pet_enabled " + (petOn ? "false" : "true"))
+        }
+    ]
+    // plasma6-only:end
 
     compactRepresentation: CompactRepresentation {}
     fullRepresentation: FullRepresentation {}

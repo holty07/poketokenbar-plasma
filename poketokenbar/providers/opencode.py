@@ -10,6 +10,11 @@ breakdown and dollar cost already computed by opencode:
      "tokens": {"input": N, "output": N, "reasoning": N,
                 "cache": {"write": N, "read": N}}}
 
+OpenCode V2 writes new assistant turns to a separate `session_message`
+table (`type = 'assistant'`) instead; its `data` nests the model as
+`{"model": {"id": ..., "providerID": ...}}` and drops `role`. Both tables can
+coexist after an upgrade, so both are read and merged on message id.
+
 `reasoning` tokens are counted into output — opencode bills them there.
 `message.time_created` mirrors `data.time.created` exactly (same epoch
 milliseconds), so the column is used directly rather than re-parsing the JSON.
@@ -35,11 +40,19 @@ from .. import pricing
 from ..cache import ScanCache
 from ..models import DailyUsage, Entry, ProviderEnrichment
 
-PARSER_VERSION = 1
+PARSER_VERSION = 2  # v2: also read the V2 session_message table
+
+
+MAX_TOKENS = 10**12
 
 
 def _int(value) -> int:
-    return value if isinstance(value, int) else 0
+    """A token count, or 0 when it is not a sane one. A negative or absurd
+    value (> MAX_TOKENS) from a corrupt log line must not wreck the day's
+    totals (upstream #307)."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return value if 0 <= value <= MAX_TOKENS else 0
 
 
 def default_db(home: Path | None = None) -> Path | None:
@@ -84,13 +97,24 @@ def _open_readonly(db_path: Path) -> sqlite3.Connection | None:
     return None
 
 
-def _parse_message(msg_id: str, time_created, data: str) -> Entry | None:
+def _parse_message(msg_id: str, time_created, data: str, v2: bool = False) -> Entry | None:
     try:
         obj = json.loads(data)
     except (ValueError, TypeError):
         return None
-    if not isinstance(obj, dict) or obj.get("role") != "assistant":
+    if not isinstance(obj, dict):
         return None
+    if v2:
+        model_ref = obj.get("model")
+        if not isinstance(model_ref, dict) or not isinstance(model_ref.get("providerID"), str):
+            return None
+        model = model_ref.get("id")
+        if not isinstance(model, str) or not model:
+            return None
+    else:
+        if obj.get("role") != "assistant":
+            return None
+        model = obj.get("modelID") or "unknown"
     tokens = obj.get("tokens")
     if not isinstance(tokens, dict):
         return None
@@ -112,7 +136,7 @@ def _parse_message(msg_id: str, time_created, data: str) -> Entry | None:
         id=f"opencode|{msg_id}",
         date=date,
         local_day=date.astimezone().strftime("%Y-%m-%d"),
-        model=obj.get("modelID") or "unknown",
+        model=model,
         input=input_tokens,
         output=output_tokens,
         cache_write=cache_write,
@@ -126,28 +150,39 @@ def _parse_database(db_path: Path) -> list[Entry] | None:
     conn = _open_readonly(db_path)
     if conn is None:
         return None
+    by_id: dict[str, Entry] = {}
     try:
-        rows = conn.execute(
-            "SELECT id, time_created, data FROM message WHERE data IS NOT NULL"
-        ).fetchall()
-    except sqlite3.OperationalError as exc:
-        # "no such table" is a permanent property of the file (it isn't an
-        # opencode database) — anything else is this moment failing to read
-        # a store that may well be one.
-        if "no such table" in str(exc):
-            return []
-        return None
+        for sql, v2 in (
+            ("SELECT id, time_created, data FROM message WHERE data IS NOT NULL", False),
+            (
+                (
+                    "SELECT id, time_created, data FROM session_message"
+                    " WHERE type = 'assistant' AND data IS NOT NULL"
+                ),
+                True,
+            ),
+        ):
+            try:
+                rows = conn.execute(sql).fetchall()
+            except sqlite3.OperationalError as exc:
+                # "no such table" is a permanent property of the file (a V1-
+                # or V2-only store, or not opencode at all) — anything else is
+                # this moment failing to read a store that may well be one.
+                if "no such table" in str(exc):
+                    continue
+                return None
+            for msg_id, time_created, data in rows:
+                entry = _parse_message(msg_id, time_created, data, v2=v2)
+                if entry is None:
+                    continue
+                existing = by_id.get(entry.id)
+                if existing is None or entry.total > existing.total:
+                    by_id[entry.id] = entry
     except sqlite3.Error:
         return None
     finally:
         conn.close()
-
-    entries: list[Entry] = []
-    for msg_id, time_created, data in rows:
-        entry = _parse_message(msg_id, time_created, data)
-        if entry is not None:
-            entries.append(entry)
-    return entries
+    return list(by_id.values())
 
 
 class OpencodeProvider:

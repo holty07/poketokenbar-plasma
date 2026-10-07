@@ -11,6 +11,7 @@ import random
 from dataclasses import dataclass, field
 
 from . import balance
+from . import profile as _profile
 from .balance import Rarity
 
 
@@ -39,9 +40,16 @@ class MonState:
     total_forms: int = 1
     is_shiny: bool = False
     nature: str | None = None
+    # Repeat hatch of a line already graduated: grows REPEAT_GROWTH_MULTIPLIER
+    # times faster (#254).
+    has_growth_boost: bool = False
     ditto_disguise: int | None = None
     ditto_revealed: bool = False
     hatched_at: float | None = None
+    # Individual values (#264); None only on saves migrated lazily.
+    profile: _profile.Profile | None = None
+    # Unown's letter (#288); None for every other species.
+    unown_form: str | None = None
 
     @property
     def current_id(self) -> int:
@@ -60,6 +68,22 @@ class MonState:
     def is_final_form(self) -> bool:
         return self.stage_index >= len(self.path_ids) - 1
 
+    @property
+    def shows_shiny(self) -> bool:
+        """Shininess as the player may see it. A disguised Ditto keeps its
+        secret — shiny included — until the reveal (#420)."""
+        return self.is_shiny and (self.ditto_disguise is None or self.ditto_revealed)
+
+    @property
+    def phase_threshold(self) -> int:
+        """Default-difficulty threshold for the current stage."""
+        return balance.phase_threshold(
+            self.rarity,
+            self.total_forms,
+            self.stage_index,
+            balance.REPEAT_GROWTH_MULTIPLIER if self.has_growth_boost else 1,
+        )
+
 
 @dataclass(slots=True)
 class DexEntry:
@@ -73,6 +97,15 @@ class DexEntry:
     # sort last rather than pretending to be ancient.
     caught_at: float | None = None
     raised_seconds: float | None = None
+    # Set when the companion was released by buying an egg rather than
+    # graduated (#242). None means graduated, so old saves need no migration.
+    released_at: float | None = None
+    profile: _profile.Profile | None = None
+    unown_form: str | None = None
+
+    @property
+    def released(self) -> bool:
+        return self.released_at is not None
 
 
 @dataclass(slots=True)
@@ -97,11 +130,52 @@ class CompanionState:
     language: str = "en"
     inventory: dict[str, int] = field(default_factory=dict)
     candy_grant_tier: dict[str, int] = field(default_factory=dict)
+    # Window key -> last seen resets_at. A new epoch rearms the grant even if
+    # the dip below 100% was never observed (asleep across the reset, #334).
+    candy_window_epoch: dict[str, str] = field(default_factory=dict)
     candy_feature_seeded: bool = False
+    # Difficulty actually applied to this save. Kept here, not only in config,
+    # so a change can rescale banked progress exactly once.
+    growth_difficulty: float = balance.DEFAULT_DIFFICULTY
+    shop_difficulty: float = balance.DEFAULT_DIFFICULTY
+    # Species pinned as the panel/pet representative (#158). None = current.
+    representative_id: int | None = None
+    representative_unown_form: str | None = None
+    # Which appearance to show when both are owned (#345). None = shiny if
+    # owned shiny (the old behaviour).
+    representative_shiny: bool | None = None
 
     @property
     def spendable_tokens(self) -> int:
         return max(0, self.used_since_install - self.spent_tokens)
+
+    def has_collected_final(self, base_id: int) -> bool:
+        """Whether any line starting at base_id was graduated (keys are
+        "<base>-<final>")."""
+        prefix = f"{base_id}-"
+        return any(key.startswith(prefix) for key in self.collected_finals)
+
+    def collected_unown_forms(self) -> set[str]:
+        """Letters owned — graduated, released or reached by the companion;
+        normal and shiny of a letter count once."""
+        forms = {
+            balance.resolved_unown_form(balance.UNOWN_SPECIES_ID, e.unown_form)
+            for e in self.dex
+            if balance.UNOWN_SPECIES_ID in e.chain_order
+        }
+        mon = self.active
+        if mon is not None and balance.UNOWN_SPECIES_ID in mon.path_ids[: mon.stage_index + 1]:
+            forms.add(balance.resolved_unown_form(balance.UNOWN_SPECIES_ID, mon.unown_form))
+        return forms
+
+    def egg_threshold(self) -> int:
+        return balance.scaled(balance.EGG_HATCH_THRESHOLD, self.growth_difficulty)
+
+    def stage_threshold(self, mon: MonState) -> int:
+        """Difficulty-scaled threshold. Never call balance.phase_threshold
+        directly for growth — a caller that forgets the multiplier would
+        silently fall back to default difficulty."""
+        return max(1, balance.scaled(mon.phase_threshold, self.growth_difficulty))
 
 
 @dataclass(slots=True)
@@ -153,14 +227,20 @@ STATUS_MESSAGE = {
 
 
 def roll_shiny(rng: random.Random, has_charm: bool) -> bool:
-    denominator = (
-        balance.SHINY_CHARM_DENOMINATOR if has_charm else balance.SHINY_DENOMINATOR
-    )
-    return rng.randrange(denominator) == 0
+    return rng.randrange(balance.shiny_denominator(has_charm)) == 0
 
 
 def roll_nature(rng: random.Random) -> str:
     return rng.choice(balance.NATURES)
+
+
+def roll_unown_form(rng: random.Random, collected: set[str]) -> str:
+    """Uncollected letters weigh 2, collected 1 — only after Unown itself was
+    rolled, so species odds are untouched. Uniform once all 28 are owned."""
+    weights = [
+        balance.collection_weight(2, form in collected) for form in balance.UNOWN_FORMS
+    ]
+    return rng.choices(balance.UNOWN_FORMS, weights=weights, k=1)[0]
 
 
 def roll_ditto(rng: random.Random, line: EvoLine) -> bool:
@@ -188,7 +268,12 @@ def hatch(state: CompanionState, line: EvoLine, rng: random.Random) -> MonState:
         total_forms=line.total_forms,
         is_shiny=roll_shiny(rng, has_charm),
         nature=roll_nature(rng),
+        has_growth_boost=state.has_collected_final(line.base_id),
         hatched_at=__import__("time").time(),
+        profile=_profile.generate(rng.getrandbits(64)),
+        unown_form=roll_unown_form(rng, state.collected_unown_forms())
+        if line.base_id == balance.UNOWN_SPECIES_ID
+        else None,
         # The disguise stores the species being impersonated; the reveal swaps
         # the display to Ditto while keeping this for the "it was Ditto!" moment.
         ditto_disguise=line.base_id if roll_ditto(rng, line) else None,
@@ -206,6 +291,8 @@ def graduate(state: CompanionState, mon: MonState, now: float | None = None) -> 
     import time as _time
 
     now = _time.time() if now is None else now
+    if mon.profile is not None:
+        mon.profile.advance_growth(balance.graduation_total(mon.rarity), mon.rarity)
     entry = DexEntry(
         base_id=mon.base_id,
         final_id=mon.current_id,
@@ -215,11 +302,50 @@ def graduate(state: CompanionState, mon: MonState, now: float | None = None) -> 
         nature=mon.nature,
         caught_at=now,
         raised_seconds=(now - mon.hatched_at) if mon.hatched_at else None,
+        profile=mon.profile,
+        unown_form=mon.unown_form,
     )
     state.dex.append(entry)
     state.collected_finals.add(f"{mon.base_id}-{mon.current_id}")
     state.active = None
     state.egg_usage = 0
+    return entry
+
+
+def release(state: CompanionState, now: float | None = None) -> DexEntry | None:
+    """Send the current companion off (buying an egg) without losing its
+    Pokédex credit (#242).
+
+    Only reached forms are credited — the planned path would make an egg a
+    shortcut to evolutions never reached. Shiny follows shows_shiny so a
+    disguised Ditto isn't exposed. collected_finals is untouched: it wasn't
+    raised to the end, so it must not count toward completion or repeat
+    boosts.
+    """
+    import time as _time
+
+    mon = state.active
+    if mon is None:
+        return None
+    now = _time.time() if now is None else now
+    reached = mon.path_ids[: mon.stage_index + 1] or [mon.current_id]
+    if mon.ditto_revealed:
+        reached = [balance.DITTO_SPECIES_ID]
+    entry = DexEntry(
+        base_id=mon.base_id,
+        final_id=reached[-1],
+        chain_order=list(reached),
+        rarity=mon.rarity,
+        is_shiny=mon.shows_shiny,
+        nature=mon.nature,
+        caught_at=mon.hatched_at or now,
+        raised_seconds=(now - mon.hatched_at) if mon.hatched_at else None,
+        released_at=now,
+        profile=mon.profile,
+        unown_form=mon.unown_form,
+    )
+    state.dex.append(entry)
+    state.active = None
     return entry
 
 
@@ -244,13 +370,14 @@ def apply_usage(
     # --- egg ---
     if state.active is None:
         state.egg_usage += tokens
-        if state.egg_usage < balance.EGG_HATCH_THRESHOLD:
+        egg_threshold = state.egg_threshold()
+        if state.egg_usage < egg_threshold:
             return events
         if line_for_egg is None:
             # No species data (offline). Hold the tokens in the egg and hatch
             # once a line is available — never discard progress.
             return events
-        overflow = state.egg_usage - balance.EGG_HATCH_THRESHOLD
+        overflow = state.egg_usage - egg_threshold
         mon = hatch(state, line_for_egg, rng)
         events.hatched = mon.current_id
         tokens = overflow
@@ -261,7 +388,7 @@ def apply_usage(
     mon = state.active
     mon.used_at_stage += tokens
     while True:
-        threshold = balance.phase_threshold(mon.rarity, mon.total_forms, mon.stage_index)
+        threshold = state.stage_threshold(mon)
         if mon.used_at_stage < threshold:
             break
         mon.used_at_stage -= threshold
@@ -275,5 +402,94 @@ def apply_usage(
         if mon.ditto_disguise is not None and not mon.ditto_revealed:
             mon.ditto_revealed = True
             events.ditto_revealed = True
+            # The boost was the disguise's line's; Ditto earns its own (#378).
+            mon.has_growth_boost = state.has_collected_final(balance.DITTO_SPECIES_ID)
+            # Same individual, different species: species fields reroll.
+            if mon.profile is not None:
+                mon.profile.rebase(mon.rarity, mon.rarity)
 
+    if state.active is not None:
+        reconcile_profile_growth(state)
     return events
+
+
+def reconcile_profile_growth(state: CompanionState) -> None:
+    """Move the companion's profile level to its earned growth, in standard
+    balance units: completed stages count in full, and the current stage by
+    the fraction earned at the current difficulty. Never lowers a level."""
+    mon = state.active
+    if mon is None or mon.profile is None:
+        return
+    completed = _profile.reconstructed_growth(mon.rarity, mon.total_forms, mon.stage_index)
+    standard_phase = balance.phase_threshold(mon.rarity, mon.total_forms, mon.stage_index)
+    fraction = min(1.0, max(0.0, mon.used_at_stage / max(1, state.stage_threshold(mon))))
+    candidate = min(
+        balance.graduation_total(mon.rarity), completed + int(standard_phase * fraction)
+    )
+    mon.profile.advance_growth(candidate, mon.rarity)
+
+
+def ensure_profiles(state: CompanionState) -> bool:
+    """Give pre-#264 companions and dex entries a profile, deterministically
+    seeded so a migration run twice yields the same Pokémon. Returns True
+    when anything was added."""
+    changed = False
+    mon = state.active
+    if mon is not None and mon.profile is None:
+        key = f"active:{mon.base_id}:{','.join(map(str, mon.path_ids))}:{mon.hatched_at}"
+        mon.profile = _profile.generate(_profile.stable_seed(key))
+        changed = True
+    for index, entry in enumerate(state.dex):
+        if entry.profile is not None:
+            continue
+        if entry.released:
+            # Only reached forms were kept; treat them as the line (an upper
+            # bound when it was released before its planned final).
+            forms = max(1, len(entry.chain_order))
+            growth = _profile.reconstructed_growth(entry.rarity, forms, forms - 1)
+        else:
+            growth = balance.graduation_total(entry.rarity)
+        p = _profile.generate(
+            _profile.stable_seed(f"dex:{index}:{entry.base_id}:{entry.final_id}:{entry.caught_at}"),
+            growth_tokens=growth,
+        )
+        p.advance_growth(growth, entry.rarity)
+        entry.profile = p
+        changed = True
+    reconcile_profile_growth(state)
+    return changed
+
+
+def set_growth_difficulty(state: CompanionState, value: float) -> bool:
+    """Apply a new growth multiplier, keeping the earned *fraction* of the
+    current egg or stage. Never hatches, evolves or graduates by itself —
+    settings changes are not usage. Returns True when anything changed."""
+    new = balance.clamp_difficulty(value)
+    old = state.growth_difficulty
+    if new == old:
+        return False
+
+    def rescaled(credits: int, base: int) -> int:
+        old_threshold = max(1, round(base * old))
+        new_threshold = max(1, round(base * new))
+        value = int(credits / old_threshold * new_threshold)
+        value = max(0, value)
+        # Rounding must never turn an incomplete stage into a completed one.
+        return min(new_threshold - 1, value) if credits < old_threshold else value
+
+    if state.active is not None:
+        state.active.used_at_stage = rescaled(
+            state.active.used_at_stage, state.active.phase_threshold
+        )
+    else:
+        state.egg_usage = rescaled(state.egg_usage, balance.EGG_HATCH_THRESHOLD)
+    state.growth_difficulty = new
+    return True
+
+
+def set_shop_difficulty(state: CompanionState, value: float) -> bool:
+    new = balance.clamp_difficulty(value)
+    if new == state.shop_difficulty:
+        return False
+    state.shop_difficulty = new
+    return True

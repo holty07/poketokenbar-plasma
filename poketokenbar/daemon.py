@@ -7,7 +7,7 @@ import time
 from datetime import date
 from pathlib import Path
 
-from . import commands, config, state
+from . import commands, config, history, state
 from .companion_store import CompanionStore
 from .burn import BurnTracker
 from .notify import Notifier
@@ -40,6 +40,14 @@ class Daemon:
         self.status_checker = status_checker
         self.spool: Path | None = None
         self.config_values = config.load(config_path)
+        self._apply_scan_folders()
+
+    def _apply_scan_folders(self) -> None:
+        """Hand each provider its extra scan folders from config (#177)."""
+        folders = self.config_values.get("extra_scan_folders") or {}
+        for provider in self.providers:
+            if hasattr(provider, "extra_roots"):
+                provider.extra_roots = tuple(Path(p) for p in folders.get(provider.id, []))
 
     def poll_once(self) -> dict:
         errors: list[str] = []
@@ -51,6 +59,7 @@ class Daemon:
                     self.limits_source.invalidate()
             elif name == "reload_config":
                 self.config_values = config.load(self.config_path)
+                self._apply_scan_folders()
             elif name in ("export", "import") and self.companion_store is not None:
                 target = (command.get("args") or {}).get("path", "")
                 try:
@@ -62,25 +71,61 @@ class Daemon:
                         )
                         message = f"exported to {written}"
                     else:
-                        self.companion_store.state = transfer.import_from(Path(target))
+                        self.companion_store.adopt(transfer.import_from(Path(target)))
                         message = "save imported"
                     if self.notifier is not None:
                         self.notifier._send("PokeTokenBar", message)
                 except Exception as exc:
                     errors.append(f"{name}: {exc}")
+            elif name in ("snapshot", "restore") and self.companion_store is not None:
+                try:
+                    if name == "snapshot":
+                        message = self.companion_store.snapshot_now()
+                    else:
+                        message = self.companion_store.restore_snapshot(
+                            str((command.get("args") or {}).get("id", ""))
+                        )
+                    if self.notifier is not None:
+                        self.notifier._send("PokeTokenBar", message)
+                except Exception as exc:
+                    errors.append(f"{name}: {exc}")
+            elif name == "pin" and self.companion_store is not None:
+                args = command.get("args") or {}
+                species = args.get("species_id")
+                form = args.get("form")
+                shiny = args.get("shiny")
+                try:
+                    self.companion_store.set_representative(
+                        species if isinstance(species, int) else None,
+                        form if isinstance(form, str) else None,
+                        shiny if isinstance(shiny, bool) else None,
+                    )
+                except ValueError as exc:
+                    errors.append(f"pin: {exc}")
             elif name in ("buy", "use") and self.companion_store is not None:
-                key = (command.get("args") or {}).get("key", "")
+                args = command.get("args") or {}
+                key = args.get("key", "")
+                count = args.get("count", 1)
+                count = count if isinstance(count, int) and not isinstance(count, bool) else 1
                 try:
                     if name == "buy":
-                        message = self.companion_store.buy(key)
+                        message = self.companion_store.buy(
+                            key, count=count, confirm=args.get("confirm") is True
+                        )
                     else:
-                        message = self.companion_store.use_item(key)
+                        message = self.companion_store.use_item(key, count=count)
                     if self.notifier is not None:
                         self.notifier._send("PokeTokenBar", message)
                 except Exception as exc:
                     errors.append(f"{name}: {exc}")
 
         today_str = date.today().strftime("%Y-%m-%d")
+        # Per-day history for the trend and recap; week/month come from it
+        # so every provider counts, not only those with fetch_periods(). It
+        # also answers "has this provider ever been used?" without a rescan.
+        usage_history = history.collect(self.providers, errors)
+        periods = history.periods(usage_history, date.fromisoformat(today_str))
+        providers_with_history = {pid for day in usage_history.values() for pid in day}
         daily_by_provider: dict[str, DailyUsage] = {}
         for provider in self.providers:
             try:
@@ -96,28 +141,8 @@ class Daemon:
             # doesn't vanish from the panel between sessions. A provider
             # that has never run at all (no logs anywhere) stays out
             # entirely — that's "not installed", not "no usage yet".
-            scan_entries = getattr(provider, "scan_entries", None)
-            try:
-                has_history = bool(scan_entries()) if scan_entries is not None else False
-            except Exception:
-                has_history = False
-            if has_history:
+            if provider.id in providers_with_history:
                 daily_by_provider[provider.id] = DailyUsage(date=today_str)
-
-        periods: dict = {}
-        for provider in self.providers:
-            fetch_periods = getattr(provider, "fetch_periods", None)
-            if fetch_periods is None:
-                continue
-            try:
-                result = fetch_periods()
-            except Exception as exc:
-                errors.append(f"{provider.id} periods: {exc}")
-                continue
-            for key in ("week", "month"):
-                bucket = periods.setdefault(key, {"tokens": 0, "cost": 0.0})
-                bucket["tokens"] += result[key]["tokens"]
-                bucket["cost"] += result[key]["cost"]
 
         limit_status = None
         if self.limits_source is not None:
@@ -146,6 +171,12 @@ class Daemon:
                 self.companion_store.state.language = str(
                     self.config_values.get("language", "en")
                 )
+                # Applied before crediting usage, so this poll's tokens grow
+                # at the new difficulty and banked progress is rescaled once.
+                self.companion_store.apply_difficulty(
+                    self.config_values.get("growth_difficulty", 1.0),
+                    self.config_values.get("shop_difficulty", 1.0),
+                )
                 self.companion_store.update(
                     {pid: d.total_tokens for pid, d in daily_by_provider.items()}
                 )
@@ -160,14 +191,19 @@ class Daemon:
                 # Candy and notifications ride on fresh limits.
                 if limit_status is not None:
                     windows = {}
-                    if limit_status.session is not None:
-                        windows["session"] = limit_status.session.utilization
-                    if limit_status.weekly is not None:
-                        windows["weekly"] = limit_status.weekly.utilization
+                    epochs = {}
+                    for kind in ("session", "weekly"):
+                        window = getattr(limit_status, kind)
+                        if window is None:
+                            continue
+                        windows[kind] = window.utilization
+                        resets_at = getattr(window, "resets_at", None)
+                        if resets_at:
+                            epochs[kind] = str(resets_at)
                     if self.burn is not None:
                         for kind, utilization in windows.items():
                             self.burn.record(kind, utilization)
-                    self.companion_store.grant_candy(windows)
+                    self.companion_store.grant_candy(windows, epochs)
                     if self.notifier is not None and self.config_values.get(
                         "limit_notifications", True
                     ):
@@ -182,6 +218,9 @@ class Daemon:
                     self.notifier.companion(
                         self.companion_store.last_events,
                         companion_payload.get("name"),
+                        shiny_odds=self.companion_store.shiny_odds()
+                        if companion_payload.get("is_shiny")
+                        else None,
                     )
                     self.companion_store.last_events = None
             except Exception as exc:
@@ -209,6 +248,8 @@ class Daemon:
             catch_log=self.companion_store.catch_log_payload() if self.companion_store else None,
             rarity_counts=self.companion_store.rarity_counts() if self.companion_store else None,
             catch_counts=self.companion_store.catch_rarity_counts() if self.companion_store else None,
+            snapshots=self.companion_store.snapshots_payload() if self.companion_store else None,
+            history=history.payload(usage_history, date.fromisoformat(today_str)),
             periods=periods,
             burn=self.burn.payload() if self.burn is not None else None,
             provider_status=status_payload,
@@ -241,10 +282,16 @@ class Daemon:
 
 def main() -> int:
     from .providers.antigravity import AntigravityProvider
+    from .providers.aside import AsideProvider
     from .providers.claude import ClaudeProvider
     from .providers.codex import CodexProvider
+    from .providers.cursor import CursorProvider
     from .providers.hermes import HermesProvider
+    from .providers.kimi_code import KimiCodeProvider
+    from .providers.kiro import KiroProvider
+    from .providers.omp import OmpProvider
     from .providers.opencode import OpencodeProvider
+    from .providers.pi import PiProvider
 
     cache_base = os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")
     cache = ScanCache(Path(cache_base) / "poketokenbar" / "scan.db")
@@ -258,6 +305,12 @@ def main() -> int:
             AntigravityProvider(cache=cache),
             OpencodeProvider(cache=cache),
             HermesProvider(cache=cache),
+            KimiCodeProvider(cache=cache),
+            PiProvider(cache=cache),
+            OmpProvider(cache=cache),
+            AsideProvider(cache=cache),
+            KiroProvider(cache=cache),
+            CursorProvider(cache=cache),
         ],
         # Official Claude usage limits are disabled for now — this desktop
         # widget no longer needs to fetch or show them. Pass LimitsSource()

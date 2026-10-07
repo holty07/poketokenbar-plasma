@@ -95,3 +95,89 @@ def test_parse_file_dedups_within_the_file(tmp_path):
 
 def test_parse_file_returns_empty_for_unreadable_path(tmp_path):
     assert claude.parse_file(tmp_path / "missing.jsonl") == []
+
+
+def _cost_state(model_usage, **over):
+    obj = {"type": "cost-state", "modelUsage": model_usage}
+    obj.update(over)
+    return json.dumps(obj)
+
+
+def _assistant(msg_id, model, output):
+    return _line(
+        requestId=f"req_{msg_id}",
+        message={
+            "id": msg_id,
+            "model": model,
+            "usage": {"input_tokens": 0, "output_tokens": output},
+        },
+    )
+
+
+def test_cost_state_strips_context_window_suffix_and_pools_variants():
+    state = claude.parse_cost_state_line(
+        _cost_state(
+            {
+                "claude-opus-5[1m]": {"costUSD": 1.5},
+                "claude-opus-5": {"costUSD": 0.5},
+                "claude-haiku-4-5": {"costUSD": -1},  # nonsense, dropped
+                "claude-sonnet-5": {"costUSD": "1"},  # not a number, dropped
+            }
+        )
+    )
+    assert state == {"claude-opus-5": 2.0}
+
+
+def test_cost_state_ignores_other_rows():
+    assert claude.parse_cost_state_line(_line()) is None
+    assert claude.parse_cost_state_line(_cost_state({})) is None
+
+
+def test_parse_file_spreads_the_last_cost_state_by_tokens(tmp_path):
+    f = tmp_path / "s.jsonl"
+    f.write_text(
+        "\n".join(
+            [
+                _assistant("a", "claude-opus-5", 100),
+                _cost_state({"claude-opus-5[1m]": {"costUSD": 99.0}}),  # superseded
+                _assistant("b", "claude-opus-5", 300),
+                _assistant("c", "claude-sonnet-5", 50),
+                # Cumulative ledger: only this final record counts.
+                _cost_state(
+                    {
+                        "claude-opus-5[1m]": {"costUSD": 4.0},
+                        "claude-haiku-4-5": {"costUSD": 7.0},  # no entry: dropped
+                    }
+                ),
+            ]
+        )
+        + "\n"
+    )
+    by_id = {e.id: e for e in claude.parse_file(f)}
+    assert by_id["a|req_a"].explicit_cost == 1.0
+    assert by_id["b|req_b"].explicit_cost == 3.0
+    # A model the ledger doesn't cover keeps the table estimate.
+    assert by_id["c|req_c"].explicit_cost is None
+
+
+def test_reported_cost_wins_over_the_table(tmp_path):
+    from poketokenbar import pricing
+
+    f = tmp_path / "s.jsonl"
+    f.write_text(
+        _assistant("a", "some-new-claude", 1000)
+        + "\n"
+        + _cost_state({"some-new-claude": {"costUSD": 0.42}})
+        + "\n"
+    )
+    [entry] = claude.parse_file(f)
+    assert pricing.cost(entry.model, 0, 1000, 0, 0) == 0.0
+    assert pricing.entry_cost(entry) == 0.42
+
+
+def test_absurd_or_negative_token_counts_count_as_zero():
+    # upstream #307: a corrupt line must not wreck the day's totals.
+    e = claude.parse_line(_line(message={"id": "m", "model": "x", "usage": {
+        "input_tokens": 10**15, "output_tokens": -5,
+        "cache_creation_input_tokens": True, "cache_read_input_tokens": 7}}))
+    assert (e.input, e.output, e.cache_write, e.cache_read) == (0, 0, 0, 7)

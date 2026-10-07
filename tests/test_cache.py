@@ -41,6 +41,15 @@ def test_hit_roundtrips_entries(cache, tmp_path):
     assert got[0].date == datetime(2026, 8, 18, 20, 50, 59, tzinfo=timezone.utc)
 
 
+def test_hit_roundtrips_a_reported_cost(cache, tmp_path):
+    p = tmp_path / "s.jsonl"
+    priced = _entry()
+    priced.explicit_cost = 0.42
+    cache.put("claude_code", p, 1.0, 10, 1, [priced, _entry(1)])
+    got = cache.get("claude_code", p, 1.0, 10, 1)
+    assert [e.explicit_cost for e in got] == [0.42, None]
+
+
 def test_changed_mtime_misses(cache, tmp_path):
     p = tmp_path / "s.jsonl"
     cache.put("claude_code", p, 1.0, 10, 1, [_entry()])

@@ -148,9 +148,12 @@ PlasmoidItem {
         AnimatedImage {
             id: petImage
             anchors.fill: parent
-            source: root.companion && root.companion.sprite_path
-                    ? "file://" + root.companion.sprite_path : ""
-            visible: root.companion !== null && root.companion.stage === "mon"
+            // A pinned representative (#158) stands in for the companion.
+            readonly property string path: !root.companion ? ""
+                : (root.companion.representative_sprite_path || root.companion.sprite_path || "")
+            source: path ? "file://" + path : ""
+            visible: root.companion !== null
+                     && (root.companion.stage === "mon" || !!root.companion.representative_sprite_path)
             playing: visible
             smooth: false            // pixel art
             fillMode: Image.PreserveAspectFit
@@ -159,6 +162,7 @@ PlasmoidItem {
         PlasmaComponents.Label {
             anchors.centerIn: parent
             visible: root.companion !== null && root.companion.stage === "egg"
+                     && !root.companion.representative_sprite_path
             text: "\u{1F95A}"
             font.pixelSize: root.petSize * 0.7
         }

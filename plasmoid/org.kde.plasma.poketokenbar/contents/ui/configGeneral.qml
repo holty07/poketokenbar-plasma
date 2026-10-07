@@ -20,6 +20,18 @@ KCM.SimpleKCM {
     property string title: ""
 
     property var settings: ({})
+    property var snapshots: []
+    readonly property var folderProviders: ["claude_code", "codex", "antigravity", "cursor",
+                                            "kiro", "pi", "omp", "kimi_code", "aside"]
+    readonly property var folderRows: {
+        var map = page.settings.extra_scan_folders || {};
+        var rows = [];
+        for (var pid in map)
+            for (var i = 0; i < map[pid].length; i++)
+                rows.push({ provider: pid, path: map[pid][i] });
+        return rows;
+    }
+
 
     function push(key, value) {
         var text = (typeof value === "boolean") ? (value ? "true" : "false") : String(value);
@@ -30,6 +42,7 @@ KCM.SimpleKCM {
     // Plasma's separate copy of the defaults.
     function reload() {
         runner.read("cat $HOME/.config/poketokenbar/config.json");
+        runner.readState();
     }
 
     Component.onCompleted: reload()
@@ -40,9 +53,18 @@ KCM.SimpleKCM {
         connectedSources: []
 
         property string pending: ""
+        readonly property string stateCmd: "cat $HOME/.local/state/poketokenbar/state.json"
 
         onNewData: function(sourceName, data) {
             disconnectSource(sourceName);
+            if (sourceName === stateCmd && data["exit code"] === 0) {
+                try {
+                    page.snapshots = JSON.parse(data["stdout"]).snapshots || [];
+                } catch (e) {
+                    page.snapshots = [];
+                }
+                return;
+            }
             if (sourceName === pending && data["exit code"] === 0) {
                 try {
                     page.settings = JSON.parse(data["stdout"]);
@@ -55,6 +77,7 @@ KCM.SimpleKCM {
 
         function run(cmd) { connectSource(cmd); }
         function read(cmd) { pending = cmd; connectSource(cmd); }
+        function readState() { connectSource(stateCmd); }
     }
 
     function applySettings() {
@@ -83,6 +106,26 @@ KCM.SimpleKCM {
             petBubbles.checked = s.floating_pet_bubble_alerts;
         if (s.language !== undefined)
             language.currentIndex = language.keys.indexOf(s.language);
+        if (s.growth_difficulty !== undefined)
+            growthDifficulty.value = page.difficultyPosition(s.growth_difficulty);
+        if (s.shop_difficulty !== undefined)
+            shopDifficulty.value = page.difficultyPosition(s.shop_difficulty);
+    }
+
+    // Difficulty sliders are logarithmic over 0.1x..2x (upstream #244): the
+    // same ratio covers the same distance, and 1x snaps within 1% of the track.
+    readonly property real difficultyMin: 0.1
+    readonly property real difficultyMax: 2.0
+    function difficultyAt(position) {
+        var p = Math.min(Math.max(position, 0), 1);
+        if (Math.abs(p - page.difficultyPosition(1.0)) < 0.01)
+            return 1.0;
+        var v = page.difficultyMin * Math.pow(page.difficultyMax / page.difficultyMin, p);
+        return Math.round(v * 100) / 100;
+    }
+    function difficultyPosition(value) {
+        var v = Math.min(Math.max(Number(value) || 1.0, page.difficultyMin), page.difficultyMax);
+        return Math.log(v / page.difficultyMin) / Math.log(page.difficultyMax / page.difficultyMin);
     }
 
     Kirigami.FormLayout {
@@ -94,8 +137,9 @@ KCM.SimpleKCM {
     QQC2.ComboBox {
         id: language
         Kirigami.FormData.label: i18n("Language:")
-        readonly property var keys: ["en", "ko", "ja", "es"]
-        model: ["English", "한국어", "日本語", "Español"]
+        readonly property var keys: ["en", "ko", "ja", "es", "fr", "pt", "de", "ru"]
+        model: ["English", "한국어", "日本語", "Español", "Français", "Português (Brasil)",
+                "Deutsch", "Русский"]
         onActivated: page.push("language", keys[currentIndex])
     }
 
@@ -134,6 +178,46 @@ KCM.SimpleKCM {
     QQC2.Label {
         text: i18n("Off shows only the character")
         opacity: 0.7
+    }
+
+    // ---------------- Difficulty ----------------
+
+    Item { Kirigami.FormData.isSection: true; Kirigami.FormData.label: i18n("Difficulty") }
+
+    RowLayout {
+        Kirigami.FormData.label: i18n("Growth:")
+        // Labelled ends (upstream #398): which way is easier is not obvious.
+        QQC2.Label { text: i18n("Faster"); opacity: 0.7 }
+        QQC2.Slider {
+            id: growthDifficulty
+            from: 0; to: 1; value: page.difficultyPosition(1.0)
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 8
+            // Saved on release: a change rescales banked progress, so it is
+            // applied once rather than on every pixel of the drag.
+            onPressedChanged: if (!pressed) page.push("growth_difficulty", page.difficultyAt(value))
+        }
+        QQC2.Label { text: i18n("Slower"); opacity: 0.7 }
+        QQC2.Label { text: page.difficultyAt(growthDifficulty.value).toFixed(2) + "×" }
+    }
+
+    RowLayout {
+        Kirigami.FormData.label: i18n("Shop prices:")
+        QQC2.Label { text: i18n("Cheaper"); opacity: 0.7 }
+        QQC2.Slider {
+            id: shopDifficulty
+            from: 0; to: 1; value: page.difficultyPosition(1.0)
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 8
+            onPressedChanged: if (!pressed) page.push("shop_difficulty", page.difficultyAt(value))
+        }
+        QQC2.Label { text: i18n("Pricier"); opacity: 0.7 }
+        QQC2.Label { text: page.difficultyAt(shopDifficulty.value).toFixed(2) + "×" }
+    }
+
+    QQC2.Label {
+        text: i18n("Changing growth keeps the progress you've earned as a fraction — it never hatches or evolves by itself.")
+        opacity: 0.7
+        wrapMode: Text.Wrap
+        Layout.maximumWidth: Kirigami.Units.gridUnit * 20
     }
 
     // ---------------- Notifications ----------------
@@ -191,7 +275,8 @@ KCM.SimpleKCM {
         Kirigami.FormData.label: i18n("Size:")
         QQC2.Slider {
             id: petSize
-            from: 48; to: 192; stepSize: 8; value: 96
+            // Ceiling raised to 384 px (upstream #267).
+            from: 48; to: 384; stepSize: 8; value: 96
             Layout.preferredWidth: Kirigami.Units.gridUnit * 10
             onMoved: page.push("floating_pet_size", Math.round(value))
         }
@@ -202,6 +287,64 @@ KCM.SimpleKCM {
         id: petBubbles
         Kirigami.FormData.label: i18n("Speech bubbles:")
         onToggled: page.push("floating_pet_bubble_alerts", checked)
+    }
+
+    // ---------------- Scan folders ----------------
+    // Extra folders per provider (upstream #177), on top of the built-in
+    // locations — for logs synced from another machine or a custom path.
+
+    Item { Kirigami.FormData.isSection: true; Kirigami.FormData.label: i18n("Extra scan folders") }
+
+    Repeater {
+        model: page.folderRows
+        RowLayout {
+            Kirigami.FormData.label: index === 0 ? i18n("Scanning:") : ""
+            QQC2.Label { text: modelData.provider; font.bold: true }
+            QQC2.Label {
+                text: modelData.path
+                elide: Text.ElideMiddle
+                Layout.maximumWidth: Kirigami.Units.gridUnit * 14
+            }
+            QQC2.Button {
+                icon.name: "list-remove"
+                text: i18n("Remove")
+                display: QQC2.AbstractButton.IconOnly
+                onClicked: {
+                    runner.run("poketokenctl folder remove " + modelData.provider + " '"
+                               + modelData.path.replace(/'/g, "'\\''") + "'");
+                    folderReload.restart();
+                }
+            }
+        }
+    }
+
+    RowLayout {
+        Kirigami.FormData.label: i18n("Add folder:")
+        QQC2.ComboBox {
+            id: folderProvider
+            model: page.folderProviders
+        }
+        QQC2.TextField {
+            id: folderPath
+            placeholderText: i18n("/path/to/logs")
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 12
+        }
+        QQC2.Button {
+            text: i18n("Add")
+            enabled: folderPath.text.trim().length > 0
+            onClicked: {
+                runner.run("poketokenctl folder add " + page.folderProviders[folderProvider.currentIndex]
+                           + " '" + folderPath.text.trim().replace(/'/g, "'\\''") + "'");
+                folderPath.text = "";
+                folderReload.restart();
+            }
+        }
+    }
+
+    Timer {
+        id: folderReload
+        interval: 800
+        onTriggered: page.reload()
     }
 
     // ---------------- Backup ----------------
@@ -226,6 +369,67 @@ KCM.SimpleKCM {
         text: i18n("Exports to ~/poketokenbar-save.json — Pokédex, tokens, bag, and companion")
         opacity: 0.7
         wrapMode: Text.Wrap
+    }
+
+    // Local snapshots (upstream #330): taken automatically every 12 hours,
+    // the newest ten kept, and used to recover a corrupt save.
+    RowLayout {
+        Kirigami.FormData.label: i18n("Backups:")
+
+        QQC2.Button {
+            text: i18n("Back up now")
+            onClicked: {
+                runner.run("poketokenctl snapshot");
+                snapshotRefresh.restart();
+            }
+        }
+    }
+
+    RowLayout {
+        Kirigami.FormData.label: i18n("Restore:")
+        enabled: page.snapshots.length > 0
+
+        QQC2.ComboBox {
+            id: snapshotPicker
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 14
+            model: page.snapshots.map(function (snap) {
+                return i18n("%1 — %2 in Pokédex", snap.date_text, snap.dex_count);
+            })
+        }
+
+        QQC2.Button {
+            id: restoreButton
+            property bool armed: false
+            text: armed ? i18n("Confirm restore") : i18n("Restore")
+            onClicked: {
+                if (!armed) {
+                    armed = true;
+                    restoreDisarm.restart();
+                    return;
+                }
+                armed = false;
+                var snap = page.snapshots[snapshotPicker.currentIndex];
+                if (snap)
+                    runner.run("poketokenctl restore " + snap.id);
+                snapshotRefresh.restart();
+            }
+            Timer { id: restoreDisarm; interval: 6000; onTriggered: restoreButton.armed = false }
+        }
+    }
+
+    QQC2.Label {
+        text: page.snapshots.length > 0
+              ? i18n("Restoring replaces your progress; the current save is backed up first.")
+              : i18n("No backups yet — one is taken automatically every 12 hours.")
+        opacity: 0.7
+        wrapMode: Text.Wrap
+        Layout.maximumWidth: Kirigami.Units.gridUnit * 20
+    }
+
+    Timer {
+        id: snapshotRefresh
+        interval: 4000
+        onTriggered: runner.readState()
     }
 
     }

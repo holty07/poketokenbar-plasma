@@ -19,18 +19,25 @@ USER_AGENT = "poketokenbar/0.1"
 MAX_ANIMATED_ID = 649
 
 
-def cache_key(species_id: int, animated: bool, shiny: bool) -> str:
-    return f"{species_id}-{'sh' if shiny else ''}{'a' if animated else 's'}"
+def _form_suffix(form: str | None) -> str:
+    """PokeAPI names Unown's letters 201-b, 201-question...; A is plain 201."""
+    return f"-{form}" if form and form != "a" else ""
 
 
-def sprite_url(species_id: int, animated: bool, shiny: bool) -> str:
+def cache_key(species_id: int, animated: bool, shiny: bool, form: str | None = None) -> str:
+    # The A form keeps the original key, so existing caches stay valid.
+    return f"{species_id}{_form_suffix(form)}-{'sh' if shiny else ''}{'a' if animated else 's'}"
+
+
+def sprite_url(species_id: int, animated: bool, shiny: bool, form: str | None = None) -> str:
+    name = f"{species_id}{_form_suffix(form)}"
     if animated:
         shiny_part = "shiny/" if shiny else ""
         return (
             f"{SPRITE_BASE}/versions/generation-v/black-white/animated/"
-            f"{shiny_part}{species_id}.gif"
+            f"{shiny_part}{name}.gif"
         )
-    return f"{SPRITE_BASE}/{'shiny/' if shiny else ''}{species_id}.png"
+    return f"{SPRITE_BASE}/{'shiny/' if shiny else ''}{name}.png"
 
 
 class SpriteStore:
@@ -60,7 +67,9 @@ class SpriteStore:
         tmp.replace(target)
         return target
 
-    def path(self, species_id: int, animated: bool = True, shiny: bool = False) -> Path | None:
+    def path(
+        self, species_id: int, animated: bool = True, shiny: bool = False, form: str | None = None
+    ) -> Path | None:
         """Local path to the sprite, downloading it once if needed.
 
         Returns None when unavailable so the caller can fall back rather than
@@ -69,12 +78,12 @@ class SpriteStore:
         if animated and species_id > MAX_ANIMATED_ID:
             animated = False
 
-        key = cache_key(species_id, animated, shiny)
+        key = cache_key(species_id, animated, shiny, form)
         target = self.dir / f"{key}.{'gif' if animated else 'png'}"
         if target.is_file() and target.stat().st_size > 0:
             return target
 
-        request = urllib.request.Request(sprite_url(species_id, animated, shiny))
+        request = urllib.request.Request(sprite_url(species_id, animated, shiny, form))
         request.add_header("User-Agent", USER_AGENT)
         try:
             with urllib.request.urlopen(request, timeout=20) as response:

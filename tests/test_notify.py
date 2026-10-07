@@ -71,3 +71,11 @@ def test_windows_are_tracked_independently():
     n.limits({"session": 85.0, "weekly": 10.0}, warn=80, crit=95)
     n.limits({"session": 85.0, "weekly": 85.0}, warn=80, crit=95)
     assert len(spy.sent) == 2
+
+
+def test_shiny_hatch_quotes_the_odds_it_rolled_at():
+    sent = []
+    Notifier(lambda title, body="", urgency="normal": sent.append((title, body))).companion(
+        GrowthEvents(hatched=25), "Pikachu", shiny_odds=48
+    )
+    assert sent == [("A shiny hatched!", "Pikachu is shiny! (1/48)")]

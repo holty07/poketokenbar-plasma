@@ -171,3 +171,71 @@ def test_cache_roundtrips_scan_entries(tmp_path):
         assert [e.id for e in first] == [e.id for e in second]
     finally:
         cache.close()
+
+
+def _add_v2_table(path, rows):
+    """`rows` is a list of (id, session_id, type, time_created, data_dict) —
+    the OpenCode V2 `session_message` projection."""
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE session_message (id TEXT PRIMARY KEY, session_id TEXT NOT NULL,"
+        " type TEXT NOT NULL, seq INTEGER NOT NULL, time_created INTEGER NOT NULL,"
+        " time_updated INTEGER NOT NULL, data TEXT NOT NULL)"
+    )
+    for seq, (msg_id, session_id, kind, time_created, data) in enumerate(rows):
+        conn.execute(
+            "INSERT INTO session_message VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (msg_id, session_id, kind, seq, time_created, time_created, json.dumps(data)),
+        )
+    conn.commit()
+    conn.close()
+
+
+def _v2_assistant(model="gpt-5", provider="openai"):
+    return {
+        "model": {"id": model, "providerID": provider},
+        "time": {"created": 1_767_312_000_000},
+        "tokens": {"input": 100, "output": 50, "reasoning": 30, "cache": {"read": 10, "write": 20}},
+        "cost": 0.5,
+    }
+
+
+def test_reads_v2_session_messages_and_merges_legacy_rows(tmp_path):
+    # Mirrors upstream testOpenCodeReadsV2SessionMessagesAndMergesLegacyUsage.
+    db = tmp_path / "opencode.db"
+    _make_db(db, [("msg-v1", "ses-v1", 1_767_312_000_000, _assistant(input_=100, output=50))])
+    _add_v2_table(
+        db,
+        [
+            ("msg-v2", "ses-v2", "assistant", 1_767_312_000_000, _v2_assistant()),
+            ("msg-user", "ses-v2", "user", 1_767_312_000_000, {"text": "not usage"}),
+        ],
+    )
+    by_id = {e.id: e for e in _parse_database(db)}
+    assert set(by_id) == {"opencode|msg-v1", "opencode|msg-v2"}
+    v2 = by_id["opencode|msg-v2"]
+    assert v2.model == "gpt-5"
+    assert (v2.input, v2.output, v2.cache_read, v2.cache_write) == (100, 80, 10, 20)
+    assert v2.total == 210
+
+
+def test_v2_only_database_is_read(tmp_path):
+    db = tmp_path / "opencode.db"
+    _add_v2_table(db, [("m", "s", "assistant", 1_767_312_000_000, _v2_assistant())])
+    assert [e.id for e in _parse_database(db)] == ["opencode|m"]
+
+
+def test_v2_row_without_a_model_reference_is_skipped(tmp_path):
+    db = tmp_path / "opencode.db"
+    row = _v2_assistant()
+    del row["model"]["providerID"]
+    _add_v2_table(db, [("m", "s", "assistant", 1_767_312_000_000, row)])
+    assert _parse_database(db) == []
+
+
+def test_a_message_in_both_tables_counts_once(tmp_path):
+    db = tmp_path / "opencode.db"
+    _make_db(db, [("dup", "s", 1_767_312_000_000, _assistant(input_=100, output=50))])
+    _add_v2_table(db, [("dup", "s", "assistant", 1_767_312_000_000, _v2_assistant())])
+    [entry] = _parse_database(db)
+    assert entry.total == 210  # the larger, completed copy

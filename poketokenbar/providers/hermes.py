@@ -97,6 +97,19 @@ def _open_readonly(db_path: Path) -> sqlite3.Connection | None:
     return None
 
 
+MAX_TOKENS = 10**12
+
+
+def _count(value) -> int:
+    """A column's token count, or 0 when it isn't a sane one (NULL, a
+    non-integer, negative, or absurd) — a corrupt row must not wreck the
+    day's totals (upstream #307)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0
+    # SQLite can hand back a REAL; NaN fails both comparisons below.
+    return int(value) if 0 <= value <= MAX_TOKENS else 0
+
+
 def _parse_row(row: tuple) -> Entry | None:
     (
         session_id, started_at, last_activity_at, model,
@@ -109,12 +122,12 @@ def _parse_row(row: tuple) -> Entry | None:
         return None
     date = datetime.fromtimestamp(epoch, tz=timezone.utc)
 
-    input_tokens = input_tokens or 0
+    input_tokens = _count(input_tokens)
     # reasoning has no dedicated Entry field — folded into output, the same
     # choice opencode's provider makes for its own reasoning counter.
-    output_tokens = (output_tokens or 0) + (reasoning_tokens or 0)
-    cache_write = cache_write_tokens or 0
-    cache_read = cache_read_tokens or 0
+    output_tokens = _count(output_tokens) + _count(reasoning_tokens)
+    cache_write = _count(cache_write_tokens)
+    cache_read = _count(cache_read_tokens)
     if input_tokens + output_tokens + cache_write + cache_read <= 0:
         return None
 

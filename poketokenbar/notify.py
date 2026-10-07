@@ -49,12 +49,17 @@ class Notifier:
         # kind -> highest tier already announced (1 = warn, 2 = crit).
         self._limit_tier: dict[str, int] = {}
 
-    def companion(self, events, name: str | None = None) -> None:
+    def companion(self, events, name: str | None = None, shiny_odds: int | None = None) -> None:
+        """`shiny_odds` is the denominator the hatch rolled at when the
+        hatchling is visibly shiny (#351); None for an ordinary hatch."""
         if events is None:
             return
         label = name or "Your companion"
         if events.hatched is not None:
-            self._send("An egg hatched!", f"{label} joined you.")
+            if shiny_odds:
+                self._send("A shiny hatched!", f"{label} is shiny! (1/{shiny_odds})")
+            else:
+                self._send("An egg hatched!", f"{label} joined you.")
         if events.evolved_to is not None:
             self._send("Evolution!", f"{label} evolved.")
         if events.graduated is not None:

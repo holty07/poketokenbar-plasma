@@ -34,10 +34,10 @@ PokeTokenBar for Plasma turns the AI coding tokens you're already burning — Cl
 ## How it works
 
 1. 🥚 **Code as usual.** The tokens you burn in Claude Code or Codex incubate an egg — nothing extra to run.
-2. 🐣 **Hatch.** Eggs hatch into Pokémon with real evolution lines from [PokéAPI](https://pokeapi.co/) — any Gen 1–5 line (328 possible starts), weighted by the official capture rate: commons hatch often, a legendary is rare. It appears in your **Collection** immediately while you raise it. Every hatch rolls one of 25 natures — and once in a rare while, the egg hatches **✨ Shiny**.
+2. 🐣 **Hatch.** Eggs hatch into Pokémon with real evolution lines from [PokéAPI](https://pokeapi.co/) — any Gen 1–5 line (328 possible starts), weighted by the official capture rate: commons hatch often, a legendary is rare. It appears in your **Collection** immediately while you raise it. Every hatch rolls one of 25 natures and its own individual values — IVs, gender, ability and a moveset that grows with it — and once in a rare while, the egg hatches **✨ Shiny**. Unown hatches as one of its 28 letters, each collected separately.
 3. ⚡ **Evolve.** Keep coding and it grows through its actual evolution tree, with a celebration banner at each step.
-4. 🎓 **Graduate & collect.** Final form + threshold permanently archives it in your **Pokédex** — rarer takes longer — and a fresh egg arrives.
-5. 🛒 **Spend at the Shop.** Every token you've used is spendable currency — buy **Rare Candy**, a **Mint** that re-rolls your Pokémon's nature, a **Shiny Charm** that permanently raises your shiny odds, or an egg to send off your current companion and start over.
+4. 🎓 **Graduate & collect.** Final form + threshold permanently archives it in your **Pokédex** — rarer takes longer — and a fresh egg arrives. Hatch a line you've already graduated and it grows twice as fast.
+5. 🛒 **Spend at the Shop.** Every token you've used is spendable currency — buy **Rare Candy** (one or many at once), a **Mint** that re-rolls your Pokémon's nature, a **Shiny Charm** that permanently raises your shiny odds, or an egg to release your current companion — it stays in your Pokédex — and start over. Releasing a legendary or shiny asks twice.
 
 ## Tour
 
@@ -45,7 +45,7 @@ PokeTokenBar for Plasma turns the AI coding tokens you're already burning — Cl
 <tr>
 <td width="55%" valign="top">
 <h3>🏠 Home</h3>
-Your companion with its rarity, nature, and evolution line — dimmed forms are the ones it hasn't reached yet. Today's tokens and cost, this week, this month, and a per-provider breakdown of input, output, and cache.
+Your companion with its rarity, nature, and evolution line — dimmed forms are the ones it hasn't reached yet. Today's tokens and cost, this week, this month, a day-by-day chart of the month stacked by provider, and a per-provider breakdown of input, output, and cache. A **Usage** tab recaps any week, month or year.
 </td>
 <td width="45%" align="center"><img src="assets/popup-home.png" width="300" alt="Home tab"></td>
 </tr>
@@ -59,7 +59,7 @@ Spend the tokens you've already used. Rare Candy, Mint, Shiny Charm, and three g
 <tr>
 <td width="55%" valign="top">
 <h3>📕 Collection</h3>
-A species-level Pokédex with rarity filters and paging — every form you've actually been, including the one you're raising right now. The Catch log records each individual instead: its full evolution chain, its nature, and how long it took.
+A species-level Pokédex with search, sorting, rarity and shiny filters — every form you've actually been, including the one you're raising right now. Click a sprite for its entry: level, types, ability, stats and IVs, moves — and pin it to your panel. The Catch log records each individual instead: its full evolution chain, level, nature, and how long it took.
 </td>
 <td width="45%" align="center"><img src="assets/popup-collection.png" width="300" alt="Collection tab"></td>
 </tr>
@@ -71,7 +71,7 @@ An animated Gen-V sprite lives next to your hatch / evolution / graduation progr
 
 ### 🐾 Let it live on your desktop
 
-A second widget puts your companion on the desktop at any size from 48 to 192px. Hover it for its mood, click for progress, right-click for a menu — and hatch/evolution alerts can appear as a speech bubble above it.
+A second widget puts your companion on the desktop at any size from 48 to 384px. Hover it for its mood, click for progress, right-click for a menu — and hatch/evolution alerts can appear as a speech bubble above it.
 
 ## Also in the box
 
@@ -79,8 +79,11 @@ A second widget puts your companion on the desktop at any size from 48 to 192px.
 - **Ditto disguise** — once in a rare while a common hatch is secretly a Ditto, and reveals itself when it "evolves".
 - **Provider status** — Claude and OpenAI incidents surface in the popup when they happen.
 - **Save export / import** — move your Pokédex, tokens, bag, and companion between machines.
+- **Automatic backups** — a snapshot every 12 hours (the newest ten kept), restorable from Settings; a corrupt save recovers from the newest one on its own.
+- **Difficulty** — separate growth and shop-price sliders, from 0.1× to 2×.
+- **Extra scan folders** — point a provider at logs synced from another machine.
 - **Stale detection** — if the daemon stops, the panel says so instead of quietly freezing.
-- **Four languages** — English, 한국어, 日本語, Español.
+- **Eight languages** — English, 한국어, 日本語, Español, Français, Português, Deutsch, Русский.
 
 ## Works with
 
@@ -91,13 +94,19 @@ A second widget puts your companion on the desktop at any size from 48 to 192px.
 | **Antigravity** | ✅ token counts only — subscription-billed, reports no cost |
 | **OpenCode** | ✅ reads opencode's own session database directly |
 | **Hermes Agent** | ✅ reads Hermes's own session database directly |
-| Gemini CLI, Cursor, Grok CLI, Copilot CLI, Kiro CLI | ❌ not ported — see [What's missing](#whats-missing) |
+| **Kimi Code** | ✅ token counts from its `wire.jsonl` usage records — records no cost |
+| **Pi** | ✅ reads Pi's session JSONL, including its own cost estimate |
+| **omp (oh-my-pi)** | ✅ reads omp's session JSONL, including its own cost estimate |
+| **Aside** | ✅ reads Aside's per-profile state database, including its own cost |
+| **Kiro CLI** | ✅ estimated tokens (bytes/4 of resent conversation text) — Kiro stores no token counts or cost |
+| **Cursor** | ✅ Cursor's dashboard usage API when signed in (real tokens and cost), else local chat-bubble token counts |
+| Gemini CLI, Grok CLI, Copilot CLI | ❌ not ported — see [What's missing](#whats-missing) |
 
 ## Install
 
 ### Requirements
 
-- KDE Plasma 6 (developed on 6.7.4, Qt 6.11)
+- KDE Plasma 6 (developed on 6.7.4, Qt 6.11), or Plasma 5.27 with Qt 5.15
 - Python 3.12+
 - `libnotify` for notifications (optional)
 - `python-orjson` for ~2× faster parsing (optional)
@@ -111,9 +120,11 @@ makepkg -si
 systemctl --user enable --now poketokend
 ```
 
-Installs system-wide with no venv. Remove with `sudo pacman -R poketokenbar-plasma`.
+Installs system-wide with no venv. This package currently targets Plasma 6;
+Plasma 5 users should use the compatibility installer below. Remove with
+`sudo pacman -R poketokenbar-plasma`.
 
-### Any other distro
+### Any other distro — Plasma 6
 
 ```bash
 git clone https://github.com/rubensanchezrivero/poketokenbar-plasma.git
@@ -122,6 +133,21 @@ cd poketokenbar-plasma
 ```
 
 Self-contained: creates its own venv and installs everything under `$HOME`.
+
+### KDE Plasma 5.27
+
+Plasma 5 uses Qt 5 and different QML APIs. A compatibility build is included
+for systems that cannot upgrade to Plasma 6:
+
+```bash
+./install.sh --plasma5
+```
+
+This installs the same Python daemon and generated Plasma 5 versions of both
+widgets. The Plasma 6 source remains canonical, so fixes to the UI are shared
+between both builds. Plasma versions older than 5.27 are not supported. If the
+widget browser was already open or an incompatible copy was already loaded,
+restart Plasma Shell (or log out and back in) after installation.
 
 ### Widgets only
 
@@ -134,6 +160,14 @@ kpackagetool6 -t Plasma/Applet -i dist/org.kde.plasma.poketokenpet.plasmoid
 Then right-click your panel → **Add Widgets** → **PokeTokenBar**.
 For the desktop pet, add **PokeTokenBar Pet** to your desktop.
 
+For Plasma 5, build and install the compatibility bundles instead:
+
+```bash
+./packaging/build-plasmoids5.sh
+kpackagetool5 -t Plasma/Applet -i dist/plasma5/org.kde.plasma.poketokenbar.plasmoid
+kpackagetool5 -t Plasma/Applet -i dist/plasma5/org.kde.plasma.poketokenpet.plasmoid
+```
+
 ## Data sources
 
 | Path | Read for |
@@ -143,6 +177,12 @@ For the desktop pet, add **PokeTokenBar Pet** to your desktop.
 | `~/.gemini/antigravity{,-cli,-ide}/conversations/*.db` | Antigravity usage (per-conversation SQLite, protobuf token ledger) |
 | `~/.local/share/opencode/opencode.db` | opencode usage (also `$XDG_DATA_HOME/opencode`) |
 | `~/.hermes/state.db` | Hermes Agent usage (also `$HERMES_HOME`) |
+| `~/.kimi-code/sessions/**/wire.jsonl` | Kimi Code usage (also `$KIMI_CODE_HOME`) |
+| `~/.pi/agent/sessions/**/*.jsonl` | Pi usage (also `$PI_CODING_AGENT_DIR`, `$PI_CODING_AGENT_SESSION_DIR`) |
+| `~/.omp/agent/sessions/**/*.jsonl` | omp usage (also `$OMP_CODING_AGENT_DIR`; `bridge/` copies skipped) |
+| `~/.aside/u/*/state.db` | Aside usage (turn token aggregates only) |
+| `~/.local/share/kiro-cli/data.sqlite3`, `~/.kiro/sessions/**` | Kiro CLI usage (also `$KIRO_CLI_HOME`, `$KIRO_HOME`) |
+| `~/.config/Cursor/User/globalStorage/state.vscdb` | Cursor login token and local bubble usage (also `Cursor Nightly`, `$CURSOR_DATA_DIR`) |
 | `~/.claude/.credentials.json` | OAuth token for official limits |
 | `~/.claude.json` | which account those limits belong to |
 | [PokéAPI](https://pokeapi.co/) + [PokeAPI/sprites](https://github.com/PokeAPI/sprites) | species, evolution chains, sprites — fetched at runtime, cached locally |
@@ -159,7 +199,7 @@ Where the app keeps its own state:
 ## Privacy & permissions
 
 - **Everything is local.** Token counts come from log files already on your disk. No telemetry, no analytics, no account of ours.
-- **Two network calls, both optional.** PokéAPI for species data and GitHub for sprites. If either fails, token counts keep working. (A third, `api.anthropic.com/api/oauth/usage` for official usage limits, exists in the code but is currently disabled — see the note under [Why](#why).)
+- **Few network calls, all optional.** PokéAPI for species data and GitHub for sprites. If you are signed in to Cursor, its usage is read from Cursor's own dashboard endpoint (`cursor.com/api/dashboard/get-filtered-usage-events`, at most every five minutes, with the login token Cursor keeps in `state.vscdb`; set `CURSOR_USAGE_API=0` to keep Cursor local-only). If any of these fail, token counts keep working. (Another, `api.anthropic.com/api/oauth/usage` for official usage limits, exists in the code but is currently disabled — see the note under [Why](#why).)
 - **Nothing is bundled.** No Pokémon sprites or data ship in this repository; they're fetched at runtime and cached under `~/.cache`.
 
 ### If you use several Claude accounts
@@ -170,7 +210,7 @@ Session logs carry **no account marker**, so token totals from every account on 
 
 Compared to the macOS original:
 
-- **Five of the ten usage providers.** Claude Code, Codex, Antigravity, opencode, and Hermes Agent are ported. I have no data for the others, so porting them would mean shipping parsers nobody could verify. The provider interface is unchanged — each is one file when someone who uses one wants to add it.
+- **Some usage providers.** Claude Code, Codex, Antigravity, opencode, Hermes Agent, Kimi Code, Pi, omp, Aside, Kiro CLI and Cursor are ported (the last six from upstream's parsers and test fixtures, without real Linux data to verify against). Gemini CLI, Grok CLI and Copilot CLI are not. Cursor's remaining-included-usage limits panel is not ported either. The provider interface is unchanged — each is one file when someone who uses one wants to add it.
 - **Antigravity's official rate limits.** The Swift original also polls Google's quota endpoint (`AntigravityRateLimitsProvider`) for a 5-hour/weekly percentage. Not ported here — it needs a second, per-provider limits pipeline (today's `LimitsSource` is Claude-only) plus OAuth token handling, so it's out of scope for the usage-provider port. Token counts and cost (always $0 — subscription-billed) work today without it.
 - In-app updater, crash reporter, and Keychain handling — macOS concepts with no Linux equivalent, or unnecessary here.
 - A diagnostics / log viewer.

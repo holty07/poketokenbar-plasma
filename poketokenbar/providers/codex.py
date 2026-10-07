@@ -1,6 +1,7 @@
 """Codex usage — ports the Codex half of LocalUsageReader.swift.
 
-Rollout files at ~/.codex/sessions/**/rollout-*.jsonl carry
+Rollout files at ~/.codex/sessions/**/rollout-*.jsonl (and, once Codex
+archives a session, ~/.codex/archived_sessions/rollout-*.jsonl) carry
 `payload.type == "token_count"` events. Each event's `info.last_token_usage`
 is the delta for that turn, so entries are summed rather than max-reduced.
 
@@ -19,13 +20,22 @@ from pathlib import Path
 from .. import pricing
 from ..cache import ScanCache
 from ..models import DailyUsage, Entry, ProviderEnrichment
+from .base import with_extra_roots
 from .claude import _parse_timestamp, jsonl_files
 
-PARSER_VERSION = 1
+PARSER_VERSION = 2  # v2: count total-only turns (#278)
+
+
+MAX_TOKENS = 10**12
 
 
 def _int(value) -> int:
-    return value if isinstance(value, int) else 0
+    """A token count, or 0 when it is not a sane one. A negative or absurd
+    value (> MAX_TOKENS) from a corrupt log line must not wreck the day's
+    totals (upstream #307)."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return value if 0 <= value <= MAX_TOKENS else 0
 
 
 @dataclass(slots=True)
@@ -41,6 +51,7 @@ def parse_rollout(path: Path) -> ParsedRollout:
     model = "gpt-5.5"
     turn = 0
     name = path.name
+    previous_cumulative: int | None = None
 
     try:
         with open(path, encoding="utf-8", errors="replace") as fh:
@@ -74,6 +85,20 @@ def parse_rollout(path: Path) -> ParsedRollout:
 
                 input_total = _int(last.get("input_tokens"))
                 cached = _int(last.get("cached_input_tokens"))
+                output = _int(last.get("output_tokens"))
+                non_cached = max(0, input_total - cached)
+                cumulative = info.get("total_token_usage")
+                cumulative = cumulative if isinstance(cumulative, dict) else None
+                prior = previous_cumulative
+                if cumulative is not None:
+                    previous_cumulative = _int(cumulative.get("total_tokens"))
+                last_total = _last_total(last)
+                if non_cached + cached + output == 0 and last_total > 0 and _trust_total_only(
+                    last_total, cumulative, prior
+                ):
+                    # #278: every component is 0 but total_tokens is set. The
+                    # bucket split is unknown, so the total lands in input.
+                    non_cached, cached, output = last_total, 0, 0
                 entries.append(
                     Entry(
                         # Keyed by (cumulative, delta), not by file position or
@@ -87,8 +112,8 @@ def parse_rollout(path: Path) -> ParsedRollout:
                         date=date,
                         local_day=date.astimezone().strftime("%Y-%m-%d"),
                         model=model,
-                        input=max(0, input_total - cached),
-                        output=_int(last.get("output_tokens")),
+                        input=non_cached,
+                        output=output,
                         cache_write=0,
                         cache_read=cached,
                     )
@@ -98,6 +123,31 @@ def parse_rollout(path: Path) -> ParsedRollout:
         return ParsedRollout([], None)
 
     return ParsedRollout(entries, session_id)
+
+
+def _components(usage: dict) -> int:
+    input_total = _int(usage.get("input_tokens"))
+    cached = _int(usage.get("cached_input_tokens"))
+    return max(0, input_total - cached) + cached + _int(usage.get("output_tokens"))
+
+
+def _trust_total_only(last_total: int, cumulative: dict | None, prior: int | None) -> bool:
+    """Whether a zero-component `last_token_usage` should count its total.
+
+    Trusted when the total is the only signal (no cumulative, or a cumulative
+    that is itself total-only), when this turn is the whole session, or when
+    the cumulative total grew since the previous turn in this file. A fork's
+    post-replay zero-context turn repeats the parent's cumulative without
+    growing it, so it stays at 0.
+    """
+    if cumulative is None:
+        return True
+    cum_total = _int(cumulative.get("total_tokens"))
+    if _components(cumulative) == 0 and cum_total > 0:
+        return True
+    if cum_total == last_total:
+        return True
+    return prior is not None and cum_total > prior
 
 
 def _cumulative(info: dict) -> int:
@@ -138,13 +188,26 @@ def _find_model(obj: dict) -> str | None:
 
 
 def session_roots(home: Path | None = None) -> list[Path]:
+    """Live and archived rollout roots. Archiving moves a rollout out of
+    sessions/, so scanning only that folder silently dropped its history.
+    The same turn found in both (mid-move) collapses on its content id."""
     home = home or Path.home()
-    root = home / ".codex" / "sessions"
-    return [root] if root.is_dir() else []
+    seen: set[Path] = set()
+    roots: list[Path] = []
+    for root in (home / ".codex" / "sessions", home / ".codex" / "archived_sessions"):
+        if not root.is_dir():
+            continue
+        resolved = root.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            roots.append(root)
+    return roots
 
 
 class CodexProvider:
     id = "codex"
+    # User-added scan folders (#177), set by the daemon from config.
+    extra_roots: tuple = ()
     display_name = "Codex"
     reports_cost = True
     PARSER_VERSION = PARSER_VERSION
@@ -155,7 +218,7 @@ class CodexProvider:
 
     def scan_entries(self) -> list[Entry]:
         by_id: dict[str, Entry] = {}
-        for root in session_roots(self._home):
+        for root in with_extra_roots(session_roots(self._home), self.extra_roots):
             for path in sorted(jsonl_files(root)):
                 for entry in parse_rollout(path).entries:
                     by_id.setdefault(entry.id, entry)

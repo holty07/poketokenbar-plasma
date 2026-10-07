@@ -17,9 +17,11 @@ def compact(value: int) -> str:
     sign = "-" if value < 0 else ""
     if v < 1_000:
         return str(value)
-    if v < 1_000_000:
+    # K and M show one decimal: promote at the rounding boundary so 999,950
+    # reads "1M", not "1000K" (upstream #365).
+    if v < 999_950:
         return sign + _trim(v / 1_000, 1) + "K"
-    if v < 1_000_000_000:
+    if v < 999_950_000:
         return sign + _trim(v / 1_000_000, 1) + "M"
     return sign + _trim(v / 1_000_000_000, 2) + "B"
 
@@ -34,13 +36,21 @@ def cost(usd: float) -> str:
 
 
 def cost_compact(usd: float) -> str:
-    """Panel cost: $9.5 / $311 / $12.0K."""
-    if usd < 100:
-        return f"${usd:.1f}"
-    if usd < 10_000:
-        return f"${usd:.0f}"
+    """Panel cost: $9.5 / $311 / $12.0K.
+
+    The band is chosen from the *rounded* value (upstream #418): 99.96 is
+    "$100", not "$100.0".
+    """
+    tenths = f"{usd:.1f}"
+    if float(tenths) < 100:
+        return f"${tenths}"
+    whole = f"{usd:.0f}"
+    if float(whole) < 10_000:
+        return f"${whole}"
     return f"${usd / 1_000:.1f}K"
 
 
 def percent(value: float) -> str:
-    return f"{value:.0f}%" if value == round(value) else f"{value:.1f}%"
+    """79.96 -> '80%' (not '80.0%'), 88.35 -> '88.3%' (upstream #418)."""
+    tenths = f"{value:.1f}"
+    return tenths.removesuffix(".0") + "%"
