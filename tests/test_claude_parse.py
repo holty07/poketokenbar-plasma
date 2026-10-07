@@ -173,3 +173,11 @@ def test_reported_cost_wins_over_the_table(tmp_path):
     [entry] = claude.parse_file(f)
     assert pricing.cost(entry.model, 0, 1000, 0, 0) == 0.0
     assert pricing.entry_cost(entry) == 0.42
+
+
+def test_absurd_or_negative_token_counts_count_as_zero():
+    # upstream #307: a corrupt line must not wreck the day's totals.
+    e = claude.parse_line(_line(message={"id": "m", "model": "x", "usage": {
+        "input_tokens": 10**15, "output_tokens": -5,
+        "cache_creation_input_tokens": True, "cache_read_input_tokens": 7}}))
+    assert (e.input, e.output, e.cache_write, e.cache_read) == (0, 0, 0, 7)

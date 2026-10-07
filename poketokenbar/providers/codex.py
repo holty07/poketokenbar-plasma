@@ -26,8 +26,16 @@ from .claude import _parse_timestamp, jsonl_files
 PARSER_VERSION = 2  # v2: count total-only turns (#278)
 
 
+MAX_TOKENS = 10**12
+
+
 def _int(value) -> int:
-    return value if isinstance(value, int) else 0
+    """A token count, or 0 when it is not a sane one. A negative or absurd
+    value (> MAX_TOKENS) from a corrupt log line must not wreck the day's
+    totals (upstream #307)."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return value if 0 <= value <= MAX_TOKENS else 0
 
 
 @dataclass(slots=True)

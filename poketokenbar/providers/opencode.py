@@ -43,8 +43,16 @@ from ..models import DailyUsage, Entry, ProviderEnrichment
 PARSER_VERSION = 2  # v2: also read the V2 session_message table
 
 
+MAX_TOKENS = 10**12
+
+
 def _int(value) -> int:
-    return value if isinstance(value, int) else 0
+    """A token count, or 0 when it is not a sane one. A negative or absurd
+    value (> MAX_TOKENS) from a corrupt log line must not wreck the day's
+    totals (upstream #307)."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return value if 0 <= value <= MAX_TOKENS else 0
 
 
 def default_db(home: Path | None = None) -> Path | None:
