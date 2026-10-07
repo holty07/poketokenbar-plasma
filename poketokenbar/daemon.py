@@ -244,6 +244,7 @@ def main() -> int:
     from .providers.claude import ClaudeProvider
     from .providers.codex import CodexProvider
     from .providers.hermes import HermesProvider
+    from .providers.kimi_code import KimiCodeProvider
     from .providers.opencode import OpencodeProvider
 
     cache_base = os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")
@@ -258,6 +259,7 @@ def main() -> int:
             AntigravityProvider(cache=cache),
             OpencodeProvider(cache=cache),
             HermesProvider(cache=cache),
+            KimiCodeProvider(cache=cache),
         ],
         # Official Claude usage limits are disabled for now — this desktop
         # widget no longer needs to fetch or show them. Pass LimitsSource()
