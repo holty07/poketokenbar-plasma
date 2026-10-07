@@ -43,6 +43,7 @@ from pathlib import Path
 from ..cache import ScanCache
 from ..models import DailyUsage, Entry, ProviderEnrichment
 from . import _local
+from .base import with_extra_roots
 
 PARSER_VERSION = 1
 
@@ -131,6 +132,8 @@ class AsideProvider:
     """Aside local usage."""
 
     id = "aside"
+    # User-added scan folders (#177), set by the daemon from config.
+    extra_roots: tuple = ()
     display_name = "Aside"
     reports_cost = True
     PARSER_VERSION = PARSER_VERSION
@@ -145,7 +148,7 @@ class AsideProvider:
             self._cache,
             self.id,
             self.PARSER_VERSION,
-            databases(roots(home=self._home)),
+            databases(with_extra_roots(roots(home=self._home), self.extra_roots)),
             parse_database,
             signature=_local.db_signature,
         )

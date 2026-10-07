@@ -12,7 +12,7 @@ def main(argv: list[str] | None = None) -> int:
     if not argv:
         print("usage: poketokenctl {set <key> <value>|refresh|buy <key> [count] [--confirm]|"
               "use <key> [count]|pin <species-id [unown-letter] [--shiny|--normal]|none>|"
-              "snapshot|restore <id>|"
+              "snapshot|restore <id>|folder add|remove <provider> <path>|"
               "export <path>|import <path>}",
               file=sys.stderr)
         return 2
@@ -32,6 +32,21 @@ def main(argv: list[str] | None = None) -> int:
 
     if action == "refresh":
         commands.enqueue("refresh", {})
+        return 0
+
+    if action == "folder":
+        if len(rest) != 3 or rest[0] not in ("add", "remove"):
+            print("usage: poketokenctl folder add|remove <provider-id> <path>", file=sys.stderr)
+            return 2
+        from .providers import PROVIDERS
+
+        known = {p.id for p in PROVIDERS if hasattr(p, "extra_roots")}
+        if rest[1] not in known:
+            print(f"{rest[1]} has no scan folders; one of: {', '.join(sorted(known))}",
+                  file=sys.stderr)
+            return 1
+        config.edit_scan_folder(config.default_path(), rest[0], rest[1], rest[2])
+        commands.enqueue("reload_config", {})
         return 0
 
     if action == "snapshot":

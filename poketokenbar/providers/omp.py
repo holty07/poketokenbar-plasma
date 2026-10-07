@@ -36,6 +36,7 @@ from pathlib import Path
 from ..cache import ScanCache
 from ..models import DailyUsage, Entry, ProviderEnrichment
 from . import _local
+from .base import with_extra_roots
 from .pi import message_date, usage_entry
 
 PARSER_VERSION = 1
@@ -106,6 +107,8 @@ class OmpProvider:
     """oh-my-pi (omp) local usage."""
 
     id = "omp"
+    # User-added scan folders (#177), set by the daemon from config.
+    extra_roots: tuple = ()
     display_name = "omp"
     reports_cost = True
     PARSER_VERSION = PARSER_VERSION
@@ -116,7 +119,7 @@ class OmpProvider:
 
     def _files(self) -> list[Path]:
         files: list[Path] = []
-        for root in session_roots(home=self._home):
+        for root in with_extra_roots(session_roots(home=self._home), self.extra_roots):
             files.extend(
                 _local.walk_files(root, lambda path, root=root: is_usage_file(path, root))
             )

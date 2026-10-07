@@ -40,6 +40,14 @@ class Daemon:
         self.status_checker = status_checker
         self.spool: Path | None = None
         self.config_values = config.load(config_path)
+        self._apply_scan_folders()
+
+    def _apply_scan_folders(self) -> None:
+        """Hand each provider its extra scan folders from config (#177)."""
+        folders = self.config_values.get("extra_scan_folders") or {}
+        for provider in self.providers:
+            if hasattr(provider, "extra_roots"):
+                provider.extra_roots = tuple(Path(p) for p in folders.get(provider.id, []))
 
     def poll_once(self) -> dict:
         errors: list[str] = []
@@ -51,6 +59,7 @@ class Daemon:
                     self.limits_source.invalidate()
             elif name == "reload_config":
                 self.config_values = config.load(self.config_path)
+                self._apply_scan_folders()
             elif name in ("export", "import") and self.companion_store is not None:
                 target = (command.get("args") or {}).get("path", "")
                 try:

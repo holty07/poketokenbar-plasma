@@ -21,6 +21,17 @@ KCM.SimpleKCM {
 
     property var settings: ({})
     property var snapshots: []
+    readonly property var folderProviders: ["claude_code", "codex", "antigravity", "cursor",
+                                            "kiro", "pi", "omp", "kimi_code", "aside"]
+    readonly property var folderRows: {
+        var map = page.settings.extra_scan_folders || {};
+        var rows = [];
+        for (var pid in map)
+            for (var i = 0; i < map[pid].length; i++)
+                rows.push({ provider: pid, path: map[pid][i] });
+        return rows;
+    }
+
 
     function push(key, value) {
         var text = (typeof value === "boolean") ? (value ? "true" : "false") : String(value);
@@ -274,6 +285,64 @@ KCM.SimpleKCM {
         id: petBubbles
         Kirigami.FormData.label: i18n("Speech bubbles:")
         onToggled: page.push("floating_pet_bubble_alerts", checked)
+    }
+
+    // ---------------- Scan folders ----------------
+    // Extra folders per provider (upstream #177), on top of the built-in
+    // locations — for logs synced from another machine or a custom path.
+
+    Item { Kirigami.FormData.isSection: true; Kirigami.FormData.label: i18n("Extra scan folders") }
+
+    Repeater {
+        model: page.folderRows
+        RowLayout {
+            Kirigami.FormData.label: index === 0 ? i18n("Scanning:") : ""
+            QQC2.Label { text: modelData.provider; font.bold: true }
+            QQC2.Label {
+                text: modelData.path
+                elide: Text.ElideMiddle
+                Layout.maximumWidth: Kirigami.Units.gridUnit * 14
+            }
+            QQC2.Button {
+                icon.name: "list-remove"
+                text: i18n("Remove")
+                display: QQC2.AbstractButton.IconOnly
+                onClicked: {
+                    runner.run("poketokenctl folder remove " + modelData.provider + " '"
+                               + modelData.path.replace(/'/g, "'\\''") + "'");
+                    folderReload.restart();
+                }
+            }
+        }
+    }
+
+    RowLayout {
+        Kirigami.FormData.label: i18n("Add folder:")
+        QQC2.ComboBox {
+            id: folderProvider
+            model: page.folderProviders
+        }
+        QQC2.TextField {
+            id: folderPath
+            placeholderText: i18n("/path/to/logs")
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 12
+        }
+        QQC2.Button {
+            text: i18n("Add")
+            enabled: folderPath.text.trim().length > 0
+            onClicked: {
+                runner.run("poketokenctl folder add " + page.folderProviders[folderProvider.currentIndex]
+                           + " '" + folderPath.text.trim().replace(/'/g, "'\\''") + "'");
+                folderPath.text = "";
+                folderReload.restart();
+            }
+        }
+    }
+
+    Timer {
+        id: folderReload
+        interval: 800
+        onTriggered: page.reload()
     }
 
     // ---------------- Backup ----------------

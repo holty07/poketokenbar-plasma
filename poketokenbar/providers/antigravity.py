@@ -42,6 +42,7 @@ from pathlib import Path
 from .. import pricing
 from ..cache import ScanCache
 from ..models import DailyUsage, Entry, ProviderEnrichment
+from .base import with_extra_roots
 from .claude import dedup_keep_max
 
 PARSER_VERSION = 1
@@ -395,6 +396,8 @@ class AntigravityProvider:
     """Antigravity local usage."""
 
     id = "antigravity"
+    # User-added scan folders (#177), set by the daemon from config.
+    extra_roots: tuple = ()
     display_name = "Antigravity"
     reports_cost = False
     PARSER_VERSION = PARSER_VERSION
@@ -407,7 +410,7 @@ class AntigravityProvider:
         """Every parsed entry across all roots, globally deduplicated."""
         all_entries: list[Entry] = []
         live: set[str] = set()
-        for root in default_roots(home=self._home):
+        for root in with_extra_roots(default_roots(home=self._home), self.extra_roots):
             for db_path in conversation_databases(root):
                 sig = _signature(db_path)
                 if sig is None:

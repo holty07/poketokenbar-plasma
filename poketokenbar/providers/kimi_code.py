@@ -37,6 +37,7 @@ from pathlib import Path
 from ..cache import ScanCache
 from ..models import DailyUsage, Entry, ProviderEnrichment
 from . import _local
+from .base import with_extra_roots
 
 PARSER_VERSION = 1
 
@@ -107,6 +108,8 @@ class KimiCodeProvider:
     """Kimi Code CLI local usage."""
 
     id = "kimi_code"
+    # User-added scan folders (#177), set by the daemon from config.
+    extra_roots: tuple = ()
     display_name = "Kimi Code"
     reports_cost = False
     PARSER_VERSION = PARSER_VERSION
@@ -118,7 +121,7 @@ class KimiCodeProvider:
     def _files(self) -> list[Path]:
         return [
             path
-            for root in session_roots(home=self._home)
+            for root in with_extra_roots(session_roots(home=self._home), self.extra_roots)
             for path in _local.walk_files(root, is_usage_file)
         ]
 

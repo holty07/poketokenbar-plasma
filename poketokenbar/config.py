@@ -31,6 +31,9 @@ DEFAULTS: dict[str, object] = {
     # Difficulty multipliers (upstream #244): 0.1 (easiest) .. 2.0 (hardest).
     "growth_difficulty": 1.0,
     "shop_difficulty": 1.0,
+    # Provider id -> extra folders to scan on top of the built-in ones
+    # (upstream #177). Edited with `poketokenctl folder add|remove`.
+    "extra_scan_folders": {},
 }
 
 
@@ -50,7 +53,39 @@ def load(path: Path) -> dict:
     for key, value in raw.items():
         if key in DEFAULTS:
             values[key] = value
+    folders = values.get("extra_scan_folders")
+    values["extra_scan_folders"] = (
+        {
+            str(pid): [str(p) for p in paths if isinstance(p, str) and p]
+            for pid, paths in folders.items()
+            if isinstance(paths, list)
+        }
+        if isinstance(folders, dict)
+        else {}
+    )
     return values
+
+
+def edit_scan_folder(path: Path, action: str, provider_id: str, folder: str) -> list[str]:
+    """Add or remove one extra scan folder for a provider; returns that
+    provider's list afterwards. Folders are stored absolute."""
+    if action not in ("add", "remove"):
+        raise ValueError(f"unknown folder action: {action}")
+    values = load(path)
+    folders = dict(values["extra_scan_folders"])
+    current = list(folders.get(provider_id, []))
+    target = os.path.abspath(os.path.expanduser(folder))
+    if action == "add" and target not in current:
+        current.append(target)
+    elif action == "remove":
+        current = [p for p in current if p != target]
+    if current:
+        folders[provider_id] = current
+    else:
+        folders.pop(provider_id, None)
+    values["extra_scan_folders"] = folders
+    save(path, values)
+    return current
 
 
 def save(path: Path, values: dict) -> None:
@@ -80,7 +115,7 @@ def _coerce(key: str, raw: str):
 
 
 def set_value(path: Path, key: str, raw: str) -> None:
-    if key not in DEFAULTS:
+    if key not in DEFAULTS or isinstance(DEFAULTS[key], dict):
         raise KeyError(f"unknown setting: {key}")
     values = load(path)
     values[key] = _coerce(key, raw)

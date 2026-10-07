@@ -62,6 +62,7 @@ from pathlib import Path
 from ..cache import ScanCache
 from ..models import DailyUsage, Entry, ProviderEnrichment
 from . import _local
+from .base import with_extra_roots
 
 PARSER_VERSION = 1
 
@@ -444,6 +445,8 @@ class CursorProvider:
     """Cursor usage: dashboard API when signed in, local bubbles otherwise."""
 
     id = "cursor"
+    # User-added scan folders (#177), set by the daemon from config.
+    extra_roots: tuple = ()
     display_name = "Cursor"
     reports_cost = True
     PARSER_VERSION = PARSER_VERSION
@@ -515,7 +518,7 @@ class CursorProvider:
         return _local.dedup_keep_max(e for s in live.values() for e in s.entries.values())
 
     def scan_entries(self) -> list[Entry]:
-        scan_roots = roots(home=self._home)
+        scan_roots = with_extra_roots(roots(home=self._home), self.extra_roots)
         api = self._dashboard_entries(scan_roots)
         if api is not None:
             return api

@@ -35,6 +35,7 @@ from pathlib import Path
 from ..cache import ScanCache
 from ..models import DailyUsage, Entry, ProviderEnrichment
 from . import _local
+from .base import with_extra_roots
 
 PARSER_VERSION = 1
 
@@ -140,6 +141,8 @@ class PiProvider:
     """Pi Agent local usage."""
 
     id = "pi"
+    # User-added scan folders (#177), set by the daemon from config.
+    extra_roots: tuple = ()
     display_name = "Pi"
     reports_cost = True
     PARSER_VERSION = PARSER_VERSION
@@ -151,7 +154,7 @@ class PiProvider:
     def _files(self) -> list[Path]:
         return [
             path
-            for root in session_roots(home=self._home)
+            for root in with_extra_roots(session_roots(home=self._home), self.extra_roots)
             for path in _local.walk_files(root, is_session_file)
         ]
 

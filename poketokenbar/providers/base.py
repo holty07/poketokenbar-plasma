@@ -6,9 +6,25 @@ branch on a provider id in shared code; see docs/reference/provider-extension.md
 
 from __future__ import annotations
 
+import os
+from collections.abc import Iterable
+from pathlib import Path
 from typing import Protocol
 
 from ..models import DailyUsage, ProviderEnrichment
+
+
+def with_extra_roots(defaults: Iterable[Path], extras: Iterable) -> list[Path]:
+    """Built-in roots plus the user's extra scan folders (upstream #177).
+
+    Extras are only ever added — a custom folder never replaces a built-in
+    one — and folders that don't exist are skipped. Duplicates and folders
+    nested inside another root are dropped so no file is scanned twice.
+    """
+    from ._local import normalized_roots
+
+    extra = [Path(os.path.expanduser(str(p))) for p in extras or ()]
+    return normalized_roots([*defaults, *(p for p in extra if p.exists())])
 
 
 class UsageProvider(Protocol):

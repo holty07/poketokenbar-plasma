@@ -20,6 +20,7 @@ from pathlib import Path
 from .. import pricing
 from ..cache import ScanCache
 from ..models import DailyUsage, Entry, ProviderEnrichment
+from .base import with_extra_roots
 from .claude import _parse_timestamp, jsonl_files
 
 PARSER_VERSION = 2  # v2: count total-only turns (#278)
@@ -197,6 +198,8 @@ def session_roots(home: Path | None = None) -> list[Path]:
 
 class CodexProvider:
     id = "codex"
+    # User-added scan folders (#177), set by the daemon from config.
+    extra_roots: tuple = ()
     display_name = "Codex"
     reports_cost = True
     PARSER_VERSION = PARSER_VERSION
@@ -207,7 +210,7 @@ class CodexProvider:
 
     def scan_entries(self) -> list[Entry]:
         by_id: dict[str, Entry] = {}
-        for root in session_roots(self._home):
+        for root in with_extra_roots(session_roots(self._home), self.extra_roots):
             for path in sorted(jsonl_files(root)):
                 for entry in parse_rollout(path).entries:
                     by_id.setdefault(entry.id, entry)

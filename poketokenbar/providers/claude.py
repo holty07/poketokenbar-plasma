@@ -17,6 +17,7 @@ from pathlib import Path
 from .. import pricing
 from ..cache import ScanCache
 from ..models import DailyUsage, Entry, ProviderEnrichment
+from .base import with_extra_roots
 
 try:  # orjson is ~2x faster on this workload but must not be required
     import orjson
@@ -206,6 +207,8 @@ class ClaudeProvider:
     """Claude Code local usage."""
 
     id = "claude_code"
+    # User-added scan folders (#177), set by the daemon from config.
+    extra_roots: tuple = ()
     display_name = "Claude Code"
     reports_cost = True
     # Bump when parse_line changes shape, to invalidate cached blobs.
@@ -220,7 +223,7 @@ class ClaudeProvider:
         """Every parsed entry across all roots, globally deduplicated."""
         all_entries: list[Entry] = []
         live: set[str] = set()
-        for root in project_roots(home=self._home):
+        for root in with_extra_roots(project_roots(home=self._home), self.extra_roots):
             for path in jsonl_files(root):
                 try:
                     stat = path.stat()
