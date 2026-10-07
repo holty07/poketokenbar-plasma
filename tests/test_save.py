@@ -141,3 +141,51 @@ def test_non_object_save_is_quarantined(tmp_path):
     p.write_text("[1,2,3]", encoding="utf-8")
     save.load(p)
     assert (tmp_path / "companion.json.corrupt").is_file()
+
+
+def test_upstream_fields_roundtrip(tmp_path):
+    p = tmp_path / "companion.json"
+    s = _full_state()
+    s.active.has_growth_boost = True
+    s.dex[0].released_at = 123.0
+    s.growth_difficulty = 0.5
+    s.shop_difficulty = 1.5
+    s.representative_id = 5
+    s.candy_window_epoch = {"limit:session": "t1"}
+    save.save(s, p)
+    loaded = save.load(p)
+    assert loaded.active.has_growth_boost is True
+    assert loaded.dex[0].released and loaded.dex[0].released_at == 123.0
+    assert (loaded.growth_difficulty, loaded.shop_difficulty) == (0.5, 1.5)
+    assert loaded.representative_id == 5
+    assert loaded.candy_window_epoch == {"limit:session": "t1"}
+
+
+def test_old_saves_get_default_difficulty_and_no_release(tmp_path):
+    p = tmp_path / "companion.json"
+    p.write_text(json.dumps({"dex": [{"base_id": 1, "final_id": 1, "chain_order": [1]}]}))
+    loaded = save.load(p)
+    assert loaded.growth_difficulty == loaded.shop_difficulty == 1.0
+    assert loaded.dex[0].released is False
+
+
+def test_out_of_range_difficulty_is_clamped_on_load(tmp_path):
+    p = tmp_path / "companion.json"
+    p.write_text(json.dumps({"growth_difficulty": 0, "shop_difficulty": 50}))
+    loaded = save.load(p)
+    assert (loaded.growth_difficulty, loaded.shop_difficulty) == (0.1, 2.0)
+
+
+def test_repeated_species_in_chains_are_dropped_on_load(tmp_path):
+    # #424: a hand-edited chain must not double-count a species.
+    p = tmp_path / "companion.json"
+    p.write_text(json.dumps({
+        "active": {"base_id": 1, "path_ids": [1, 1, 2, 3], "planned_path_ids": [1, 2, 2, 3],
+                   "stage_index": 2, "rarity": "common", "total_forms": 3},
+        "dex": [{"base_id": 4, "final_id": 6, "chain_order": [4, 5, 5, 6]}],
+    }))
+    loaded = save.load(p)
+    assert loaded.active.path_ids == [1, 2, 3]
+    assert loaded.active.planned_path_ids == [1, 2, 3]
+    assert loaded.active.current_id == 2  # still the species it was showing
+    assert loaded.dex[0].chain_order == [4, 5, 6]

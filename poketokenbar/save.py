@@ -15,6 +15,7 @@ import json
 import os
 from pathlib import Path
 
+from . import balance
 from .balance import Rarity
 from .companion import CompanionState, DexEntry, MonState
 
@@ -49,6 +50,21 @@ def _lenient(raw: dict, key: str, kind, default):
     return value if isinstance(value, kind) else default
 
 
+def _dedup(ids: list[int]) -> list[int]:
+    """First occurrence of each species. A hand-edited chain that repeats a
+    species would otherwise double-count it everywhere the chain is walked
+    (#424)."""
+    seen: set[int] = set()
+    return [i for i in ids if not (i in seen or seen.add(i))]
+
+
+def _float(raw: dict, key: str):
+    value = raw.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value
+
+
 def _decode_mon(raw) -> MonState | None:
     if not isinstance(raw, dict):
         return None
@@ -61,11 +77,16 @@ def _decode_mon(raw) -> MonState | None:
         return None
 
     planned = raw.get("planned_path_ids")
-    if not isinstance(planned, list) or not planned:
+    if not isinstance(planned, list) or not planned or not all(isinstance(i, int) for i in planned):
         planned = list(path_ids)
 
     stage = _lenient(raw, "stage_index", int, 0)
     stage = min(max(0, stage), len(path_ids) - 1)
+    # Dedup, then re-find the displayed species so the stage still points at it.
+    current = path_ids[stage]
+    path_ids = _dedup(path_ids)
+    planned = _dedup(planned)
+    stage = path_ids.index(current)
 
     return MonState(
         base_id=_lenient(raw, "base_id", int, path_ids[0]),
@@ -77,6 +98,7 @@ def _decode_mon(raw) -> MonState | None:
         total_forms=_lenient(raw, "total_forms", int, len(path_ids)),
         is_shiny=_lenient(raw, "is_shiny", bool, False),
         nature=raw.get("nature") if isinstance(raw.get("nature"), str) else None,
+        has_growth_boost=_lenient(raw, "has_growth_boost", bool, False),
         ditto_disguise=raw.get("ditto_disguise")
         if isinstance(raw.get("ditto_disguise"), int)
         else None,
@@ -98,7 +120,7 @@ def _decode_dex_entry(raw) -> DexEntry | None:
     return DexEntry(
         base_id=base_id,
         final_id=final_id,
-        chain_order=list(chain),
+        chain_order=_dedup(chain),
         rarity=_rarity(raw.get("rarity")),
         is_shiny=_lenient(raw, "is_shiny", bool, False),
         nature=raw.get("nature") if isinstance(raw.get("nature"), str) else None,
@@ -106,6 +128,7 @@ def _decode_dex_entry(raw) -> DexEntry | None:
         raised_seconds=raw.get("raised_seconds")
         if isinstance(raw.get("raised_seconds"), (int, float))
         else None,
+        released_at=_float(raw, "released_at"),
     )
 
 
@@ -144,6 +167,17 @@ def decode(raw: dict) -> CompanionState:
     if isinstance(tiers, dict):
         state.candy_grant_tier = {k: v for k, v in tiers.items() if isinstance(v, int)}
     state.candy_feature_seeded = _lenient(raw, "candy_feature_seeded", bool, False)
+    epochs = raw.get("candy_window_epoch")
+    if isinstance(epochs, dict):
+        state.candy_window_epoch = {k: v for k, v in epochs.items() if isinstance(v, str)}
+    for key in ("growth_difficulty", "shop_difficulty"):
+        value = _float(raw, key)
+        setattr(
+            state, key,
+            balance.DEFAULT_DIFFICULTY if value is None else balance.clamp_difficulty(value),
+        )
+    rep = raw.get("representative_id")
+    state.representative_id = rep if isinstance(rep, int) and not isinstance(rep, bool) else None
     return state
 
 
@@ -161,6 +195,7 @@ def encode(state: CompanionState) -> dict:
             "total_forms": m.total_forms,
             "is_shiny": m.is_shiny,
             "nature": m.nature,
+            "has_growth_boost": m.has_growth_boost,
             "ditto_disguise": m.ditto_disguise,
             "ditto_revealed": m.ditto_revealed,
             "hatched_at": m.hatched_at,
@@ -186,6 +221,7 @@ def encode(state: CompanionState) -> dict:
                 "nature": d.nature,
                 "caught_at": d.caught_at,
                 "raised_seconds": d.raised_seconds,
+                "released_at": d.released_at,
             }
             for d in state.dex
         ],
@@ -194,6 +230,10 @@ def encode(state: CompanionState) -> dict:
         "inventory": state.inventory,
         "candy_grant_tier": state.candy_grant_tier,
         "candy_feature_seeded": state.candy_feature_seeded,
+        "candy_window_epoch": state.candy_window_epoch,
+        "growth_difficulty": state.growth_difficulty,
+        "shop_difficulty": state.shop_difficulty,
+        "representative_id": state.representative_id,
     }
 
 

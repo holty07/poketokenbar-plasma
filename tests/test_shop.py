@@ -66,15 +66,50 @@ def test_shiny_charm_cannot_be_bought_twice():
         shop.buy(s, "shinyCharm")
 
 
-def test_buying_an_egg_discards_the_companion_without_dex_credit():
-    # A discarded companion must vanish as if never hatched — no dex entry and
-    # no collected_finals mark, or it would skew future branch diversity.
+def test_buying_an_egg_releases_the_companion_into_the_dex():
+    # #242: a released companion keeps its Pokédex credit, but it was not
+    # raised to the end, so collected_finals (completion, repeat boosts)
+    # stays untouched.
     s = _with_mon(tokens=balance.FRESH_EGG_PRICE)
     shop.buy(s, "egg")
     assert s.active is None
-    assert s.dex == []
+    [entry] = s.dex
+    assert entry.released and entry.chain_order == [1]
     assert s.collected_finals == set()
     assert s.egg_usage == 0
+
+
+def test_release_credits_only_reached_forms():
+    s = _with_mon(tokens=balance.FRESH_EGG_PRICE)
+    s.active.stage_index = 1
+    shop.buy(s, "egg")
+    assert s.dex[0].chain_order == [1, 2]
+
+
+def test_releasing_a_legendary_or_shiny_needs_confirmation():
+    for make_precious in (
+        lambda m: setattr(m, "rarity", Rarity.LEGENDARY),
+        lambda m: setattr(m, "is_shiny", True),
+    ):
+        s = _with_mon(tokens=balance.FRESH_EGG_PRICE)
+        make_precious(s.active)
+        with pytest.raises(shop.ShopError):
+            shop.buy(s, "egg")
+        assert s.active is not None and s.spent_tokens == 0
+        shop.buy(s, "egg", confirm=True)
+        assert s.active is None
+
+
+def test_rare_and_disguised_shiny_ditto_need_no_confirmation():
+    s = _with_mon(tokens=balance.FRESH_EGG_PRICE * 2)
+    s.active.rarity = Rarity.RARE
+    assert not shop.is_high_value(s)
+    s.active.rarity = Rarity.COMMON
+    s.active.is_shiny = True
+    s.active.ditto_disguise = 1  # the secret must not leak through a prompt
+    assert not shop.is_high_value(s)
+    shop.buy(s, "egg")
+    assert s.dex[0].is_shiny is False
 
 
 def test_premium_egg_records_its_guarantee():
@@ -164,3 +199,62 @@ def test_window_key_excludes_volatile_fields():
     # it re-fired the notification each refresh in the Swift app.
     assert shop.window_key("weekly") == "limit:weekly"
     assert "resets" not in shop.window_key("weekly")
+
+
+# --- difficulty, bulk ------------------------------------------------------
+
+
+def test_shop_difficulty_scales_every_price():
+    s = CompanionState()
+    s.shop_difficulty = 0.5
+    by_key = {e.key: e.price for e in shop.entries(s)}
+    assert by_key["rareCandy"] == balance.RARE_CANDY_PRICE // 2
+    assert by_key[f"egg:{Rarity.RARE}"] == balance.egg_price(Rarity.RARE) // 2
+
+
+def test_bulk_buy_is_all_or_nothing():
+    s = _with_mon(tokens=balance.MINT_PRICE * 3)
+    assert shop.max_buy_count(s, "mint") == 3
+    with pytest.raises(shop.ShopError):
+        shop.buy(s, "mint", count=4)
+    assert s.inventory.get("mint", 0) == 0 and s.spent_tokens == 0
+    shop.buy(s, "mint", count=3)
+    assert s.inventory["mint"] == 3
+
+
+def test_passive_items_and_eggs_cannot_be_bulk_bought():
+    s = _with_mon(tokens=balance.SHINY_CHARM_PRICE * 5)
+    for key in ("shinyCharm", "egg"):
+        with pytest.raises(shop.ShopError):
+            shop.buy(s, key, count=2)
+    assert shop.max_buy_count(s, "shinyCharm") == 1
+
+
+def test_bulk_candy_stops_at_graduation_and_keeps_the_rest():
+    s = _with_mon()
+    s.inventory["rareCandy"] = 20
+    # Common 3-form line: 375M total at default balance, so 4 candies graduate.
+    preview = shop.candy_preview(s, 20)
+    assert preview["graduates"] is True and preview["used"] == 4
+    shop.use_item(s, "rareCandy", count=20)
+    assert s.active is None
+    assert s.inventory["rareCandy"] == 16
+    assert len(s.dex) == 1
+
+
+def test_candy_preview_does_not_change_state():
+    s = _with_mon()
+    s.inventory["rareCandy"] = 1
+    before = (s.active.used_at_stage, s.active.stage_index, s.inventory["rareCandy"])
+    preview = shop.candy_preview(s, 1)
+    assert preview["evolutions"] == 1
+    assert (s.active.used_at_stage, s.active.stage_index, s.inventory["rareCandy"]) == before
+
+
+def test_candy_grant_rearms_on_a_new_window_epoch():
+    s = CompanionState()
+    s.candy_feature_seeded = True
+    assert shop.grant_candy(s, {"session": 100}, {"session": "t1"}) == 1
+    # Still 100% but never seen dipping: a new resets_at is a new window.
+    assert shop.grant_candy(s, {"session": 100}, {"session": "t1"}) == 0
+    assert shop.grant_candy(s, {"session": 100}, {"session": "t2"}) == 1

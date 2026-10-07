@@ -8,6 +8,7 @@ disableKeychainAccess (no Keychain on Linux) and updateNotificationsEnabled
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 
@@ -27,6 +28,9 @@ DEFAULTS: dict[str, object] = {
     "floating_pet_size": 96,
     "floating_pet_bubble_alerts": True,
     "language": "en",
+    # Difficulty multipliers (upstream #244): 0.1 (easiest) .. 2.0 (hardest).
+    "growth_difficulty": 1.0,
+    "shop_difficulty": 1.0,
 }
 
 
@@ -67,6 +71,11 @@ def _coerce(key: str, raw: str):
         raise ValueError(f"{key} expects a boolean, got {raw!r}")
     if isinstance(default, int):
         return int(raw)
+    if isinstance(default, float):
+        value = float(raw)
+        if not math.isfinite(value):
+            raise ValueError(f"{key} expects a number, got {raw!r}")
+        return value
     return raw
 
 

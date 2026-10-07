@@ -10,8 +10,8 @@ from . import commands, config
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if not argv:
-        print("usage: poketokenctl {set <key> <value>|refresh|buy <key>|use <key>|"
-              "export <path>|import <path>}",
+        print("usage: poketokenctl {set <key> <value>|refresh|buy <key> [count] [--confirm]|"
+              "use <key> [count]|pin <species-id|none>|export <path>|import <path>}",
               file=sys.stderr)
         return 2
 
@@ -42,10 +42,39 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if action in ("buy", "use"):
-        if len(rest) != 1:
-            print(f"usage: poketokenctl {action} <key>", file=sys.stderr)
+        confirm = "--confirm" in rest
+        rest = [r for r in rest if r != "--confirm"]
+        if not 1 <= len(rest) <= 2 or (confirm and action != "buy"):
+            usage = "<key> [count] [--confirm]" if action == "buy" else "<key> [count]"
+            print(f"usage: poketokenctl {action} {usage}", file=sys.stderr)
             return 2
-        commands.enqueue(action, {"key": rest[0]})
+        try:
+            count = int(rest[1]) if len(rest) == 2 else 1
+        except ValueError:
+            print(f"count must be a whole number, got {rest[1]!r}", file=sys.stderr)
+            return 2
+        if count < 1:
+            print("count must be at least 1", file=sys.stderr)
+            return 2
+        args = {"key": rest[0], "count": count}
+        if confirm:
+            args["confirm"] = True
+        commands.enqueue(action, args)
+        return 0
+
+    if action == "pin":
+        if len(rest) != 1:
+            print("usage: poketokenctl pin <species-id|none>", file=sys.stderr)
+            return 2
+        if rest[0] == "none":
+            species = None
+        else:
+            try:
+                species = int(rest[0])
+            except ValueError:
+                print(f"species id must be a number or 'none', got {rest[0]!r}", file=sys.stderr)
+                return 2
+        commands.enqueue("pin", {"species_id": species})
         return 0
 
     print(f"unknown command: {action}", file=sys.stderr)

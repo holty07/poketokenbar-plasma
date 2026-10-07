@@ -68,13 +68,26 @@ class Daemon:
                         self.notifier._send("PokeTokenBar", message)
                 except Exception as exc:
                     errors.append(f"{name}: {exc}")
+            elif name == "pin" and self.companion_store is not None:
+                species = (command.get("args") or {}).get("species_id")
+                try:
+                    self.companion_store.set_representative(
+                        species if isinstance(species, int) else None
+                    )
+                except ValueError as exc:
+                    errors.append(f"pin: {exc}")
             elif name in ("buy", "use") and self.companion_store is not None:
-                key = (command.get("args") or {}).get("key", "")
+                args = command.get("args") or {}
+                key = args.get("key", "")
+                count = args.get("count", 1)
+                count = count if isinstance(count, int) and not isinstance(count, bool) else 1
                 try:
                     if name == "buy":
-                        message = self.companion_store.buy(key)
+                        message = self.companion_store.buy(
+                            key, count=count, confirm=args.get("confirm") is True
+                        )
                     else:
-                        message = self.companion_store.use_item(key)
+                        message = self.companion_store.use_item(key, count=count)
                     if self.notifier is not None:
                         self.notifier._send("PokeTokenBar", message)
                 except Exception as exc:
@@ -146,6 +159,12 @@ class Daemon:
                 self.companion_store.state.language = str(
                     self.config_values.get("language", "en")
                 )
+                # Applied before crediting usage, so this poll's tokens grow
+                # at the new difficulty and banked progress is rescaled once.
+                self.companion_store.apply_difficulty(
+                    self.config_values.get("growth_difficulty", 1.0),
+                    self.config_values.get("shop_difficulty", 1.0),
+                )
                 self.companion_store.update(
                     {pid: d.total_tokens for pid, d in daily_by_provider.items()}
                 )
@@ -160,14 +179,19 @@ class Daemon:
                 # Candy and notifications ride on fresh limits.
                 if limit_status is not None:
                     windows = {}
-                    if limit_status.session is not None:
-                        windows["session"] = limit_status.session.utilization
-                    if limit_status.weekly is not None:
-                        windows["weekly"] = limit_status.weekly.utilization
+                    epochs = {}
+                    for kind in ("session", "weekly"):
+                        window = getattr(limit_status, kind)
+                        if window is None:
+                            continue
+                        windows[kind] = window.utilization
+                        resets_at = getattr(window, "resets_at", None)
+                        if resets_at:
+                            epochs[kind] = str(resets_at)
                     if self.burn is not None:
                         for kind, utilization in windows.items():
                             self.burn.record(kind, utilization)
-                    self.companion_store.grant_candy(windows)
+                    self.companion_store.grant_candy(windows, epochs)
                     if self.notifier is not None and self.config_values.get(
                         "limit_notifications", True
                     ):
@@ -182,6 +206,9 @@ class Daemon:
                     self.notifier.companion(
                         self.companion_store.last_events,
                         companion_payload.get("name"),
+                        shiny_odds=self.companion_store.shiny_odds()
+                        if companion_payload.get("is_shiny")
+                        else None,
                     )
                     self.companion_store.last_events = None
             except Exception as exc:

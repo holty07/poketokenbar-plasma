@@ -49,6 +49,59 @@ PlasmaExtras.Representation {
 
     property string rarityFilter: ""
     property int dexPage: 0
+
+    // Per-item UI state lives here, not in the delegates: state.json is
+    // re-read every 2 s and the Repeaters rebuild their delegates each time,
+    // which would reset a quantity stepper or a half-finished confirmation.
+    property var quantities: ({})        // shop/bag key -> chosen count
+    property int selectedSpecies: -1     // Pokédex entry open in the detail panel
+    readonly property var selectedEntry: {
+        for (var i = 0; i < full.dexItems.length; i++)
+            if (full.dexItems[i].species_id === full.selectedSpecies)
+                return full.dexItems[i];
+        return null;
+    }
+    property string confirmKey: ""       // egg awaiting confirmation
+    property int confirmStage: 0         // 1 = release?, 2 = precious release?
+
+    function quantity(key, max) {
+        var q = full.quantities[key] || 1;
+        return Math.max(1, Math.min(q, Math.max(1, max)));
+    }
+    function setQuantity(key, value) {
+        var next = Object.assign({}, full.quantities);
+        next[key] = value;
+        full.quantities = next;
+    }
+    function resetConfirm() {
+        full.confirmKey = "";
+        full.confirmStage = 0;
+    }
+    function buyEgg(key) {
+        var releasing = full.companion && full.companion.stage === "mon";
+        var stage = full.confirmKey === key ? full.confirmStage : 0;
+        if (!releasing) {
+            runner.run("poketokenctl buy " + key);
+            full.resetConfirm();
+        } else if (stage === 0) {
+            full.confirmKey = key;
+            full.confirmStage = 1;
+            confirmTimeout.restart();
+        } else if (stage === 1 && full.companion.high_value) {
+            // A legendary or shiny gets a second, explicit step (#335).
+            full.confirmStage = 2;
+            confirmTimeout.restart();
+        } else {
+            runner.run("poketokenctl buy " + key + (stage === 2 ? " --confirm" : ""));
+            full.resetConfirm();
+        }
+    }
+
+    Timer {
+        id: confirmTimeout
+        interval: 6000
+        onTriggered: full.resetConfirm()
+    }
     readonly property int dexPageSize: 24
 
     // Catppuccin Mocha — used for progress bars, badges, and status colors so
@@ -283,6 +336,16 @@ PlasmaExtras.Representation {
                                     text: "✨"
                                     visible: full.companion !== null && full.companion.stage === "mon"
                                              && full.companion.is_shiny
+                                }
+
+                                // Repeat hatch of a graduated line grows 2× (#254).
+                                PlasmaComponents.Label {
+                                    text: i18n("2× growth")
+                                    visible: full.companion !== null && full.companion.stage === "mon"
+                                             && full.companion.growth_boost === true
+                                    color: full.ctpGreen
+                                    font.bold: true
+                                    font.pointSize: Kirigami.Theme.smallFont.pointSize
                                 }
                             }
 
@@ -674,15 +737,65 @@ PlasmaExtras.Representation {
                                 }
 
                                 PlasmaComponents.Label {
-                                    text: i18n("Price %1", modelData.price_text)
+                                    // A released Pokémon keeps its Pokédex entry (#242, #291).
+                                    text: i18n("Your current Pokémon is released but stays in your Pokédex.")
+                                    visible: modelData.kind === "egg" && full.companion !== null
+                                             && full.companion.stage === "mon"
                                     opacity: 0.6
+                                    wrapMode: Text.Wrap
+                                    Layout.fillWidth: true
+                                }
+
+                                PlasmaComponents.Label {
+                                    readonly property int qty: full.quantity(modelData.key, modelData.max_count)
+                                    text: qty > 1
+                                          ? i18n("Total %1 (×%2)", full.compact(modelData.price * qty), qty)
+                                          : i18n("Price %1", modelData.price_text)
+                                    opacity: 0.6
+                                }
+
+                                PlasmaComponents.Label {
+                                    text: full.confirmStage === 2
+                                          ? i18n("This is a legendary or shiny Pokémon. Release it anyway?")
+                                          : i18n("Release your current Pokémon for this egg?")
+                                    visible: full.confirmKey === modelData.key
+                                    color: full.confirmStage === 2 ? full.ctpRed : full.ctpPeach
+                                    wrapMode: Text.Wrap
+                                    Layout.fillWidth: true
                                 }
                             }
 
+                            // Consumables can be bought several at once (#371).
+                            QQC2.SpinBox {
+                                visible: modelData.stackable && modelData.max_count > 1
+                                from: 1
+                                to: Math.max(1, modelData.max_count)
+                                value: full.quantity(modelData.key, modelData.max_count)
+                                editable: true
+                                onValueModified: full.setQuantity(modelData.key, value)
+                                Layout.preferredWidth: Kirigami.Units.gridUnit * 5
+                            }
+
                             QQC2.Button {
-                                text: modelData.owned ? i18n("Owned") : i18n("Buy")
+                                readonly property bool confirming: full.confirmKey === modelData.key
+                                text: {
+                                    if (modelData.owned)
+                                        return i18n("Owned");
+                                    if (confirming)
+                                        return full.confirmStage === 2 ? i18n("Release") : i18n("Confirm");
+                                    return i18n("Buy");
+                                }
                                 enabled: modelData.affordable
-                                onClicked: runner.run("poketokenctl buy " + modelData.key)
+                                onClicked: {
+                                    if (modelData.kind === "egg") {
+                                        full.buyEgg(modelData.key);
+                                        return;
+                                    }
+                                    var qty = modelData.stackable
+                                              ? full.quantity(modelData.key, modelData.max_count) : 1;
+                                    runner.run("poketokenctl buy " + modelData.key + " " + qty);
+                                    full.setQuantity(modelData.key, 1);
+                                }
                             }
                         }
                     }
@@ -742,12 +855,51 @@ PlasmaExtras.Representation {
                                 text: modelData.effect
                                 opacity: 0.6
                             }
+
+                            // Growth preview for the chosen number of candies (#328).
+                            PlasmaComponents.Label {
+                                readonly property var preview: {
+                                    if (!modelData.previews || modelData.previews.length === 0)
+                                        return null;
+                                    var n = full.quantity("bag:" + modelData.key, modelData.previews.length);
+                                    return modelData.previews[n - 1];
+                                }
+                                visible: preview !== null
+                                text: {
+                                    if (!preview)
+                                        return "";
+                                    if (preview.graduates)
+                                        return preview.used < preview.count
+                                               ? i18n("Graduates after %1 — the rest stay in your bag", preview.used)
+                                               : i18n("Graduates!");
+                                    if (preview.evolutions > 0)
+                                        return i18np("Evolves once", "Evolves %1 times", preview.evolutions);
+                                    return i18n("Stage progress → %1%", Math.round(preview.stage_progress * 100));
+                                }
+                                color: full.ctpGreen
+                            }
+                        }
+
+                        QQC2.SpinBox {
+                            visible: modelData.previews !== undefined && modelData.previews.length > 1
+                            from: 1
+                            to: modelData.previews ? Math.max(1, modelData.previews.length) : 1
+                            value: full.quantity("bag:" + modelData.key,
+                                                 modelData.previews ? modelData.previews.length : 1)
+                            editable: true
+                            onValueModified: full.setQuantity("bag:" + modelData.key, value)
+                            Layout.preferredWidth: Kirigami.Units.gridUnit * 5
                         }
 
                         QQC2.Button {
                             text: modelData.passive ? i18n("Active") : i18n("Use")
                             enabled: modelData.usable
-                            onClicked: runner.run("poketokenctl use " + modelData.key)
+                            onClicked: {
+                                var qty = modelData.previews
+                                          ? full.quantity("bag:" + modelData.key, modelData.previews.length) : 1;
+                                runner.run("poketokenctl use " + modelData.key + " " + qty);
+                                full.setQuantity("bag:" + modelData.key, 1);
+                            }
                         }
                     }
                 }
@@ -803,6 +955,70 @@ PlasmaExtras.Representation {
                         PlasmaComponents.Label {
                             text: i18n("%1 species", full.dexItems.length)
                             font.bold: true
+                        }
+
+                        // ---- entry detail (opened by clicking a sprite, #394) ----
+                        Rectangle {
+                            Layout.fillWidth: true
+                            visible: full.selectedEntry !== null
+                            radius: Kirigami.Units.smallSpacing
+                            color: full.ctpSurface0
+                            implicitHeight: detailRow.implicitHeight + Kirigami.Units.largeSpacing
+
+                            RowLayout {
+                                id: detailRow
+                                anchors.fill: parent
+                                anchors.margins: Kirigami.Units.smallSpacing
+                                spacing: Kirigami.Units.largeSpacing
+
+                                Image {
+                                    source: full.selectedEntry && full.selectedEntry.sprite_path
+                                            ? "file://" + full.selectedEntry.sprite_path : ""
+                                    smooth: false
+                                    fillMode: Image.PreserveAspectFit
+                                    Layout.preferredWidth: Kirigami.Units.gridUnit * 4
+                                    Layout.preferredHeight: Kirigami.Units.gridUnit * 4
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    PlasmaExtras.Heading {
+                                        level: 4
+                                        text: full.selectedEntry
+                                              ? (full.selectedEntry.is_shiny ? "✨" : "")
+                                                + "#" + full.selectedEntry.species_id + " "
+                                                + (full.selectedEntry.name || "")
+                                              : ""
+                                    }
+                                    PlasmaComponents.Label {
+                                        text: full.selectedEntry
+                                              ? full.selectedEntry.rarity.charAt(0).toUpperCase()
+                                                + full.selectedEntry.rarity.slice(1)
+                                                + (full.selectedEntry.is_raising ? " · " + i18n("raising") : "")
+                                              : ""
+                                        color: full.selectedEntry ? full.rarityColor(full.selectedEntry.rarity) : "grey"
+                                    }
+
+                                    RowLayout {
+                                        spacing: Kirigami.Units.smallSpacing
+
+                                        // Pin as the panel / floating pet representative (#158).
+                                        QQC2.Button {
+                                            readonly property bool pinned: full.selectedEntry !== null
+                                                                           && full.selectedEntry.is_representative === true
+                                            text: pinned ? i18n("Unpin from panel") : i18n("Show in panel")
+                                            onClicked: runner.run("poketokenctl pin "
+                                                                  + (pinned ? "none" : full.selectedEntry.species_id))
+                                        }
+                                        QQC2.Button {
+                                            text: i18n("Close")
+                                            onClicked: full.selectedSpecies = -1
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         PlasmaComponents.Label {
@@ -861,6 +1077,22 @@ PlasmaExtras.Representation {
                                         fillMode: Image.PreserveAspectFit
                                         Layout.preferredWidth: Kirigami.Units.gridUnit * 2.5
                                         Layout.preferredHeight: Kirigami.Units.gridUnit * 2.5
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: full.selectedSpecies =
+                                                full.selectedSpecies === modelData.species_id ? -1 : modelData.species_id
+                                        }
+
+                                        PlasmaComponents.Label {
+                                            // The pinned representative.
+                                            anchors.top: parent.top
+                                            anchors.right: parent.right
+                                            text: "📌"
+                                            visible: modelData.is_representative === true
+                                            font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                        }
                                     }
 
                                     PlasmaComponents.Label {
@@ -961,6 +1193,24 @@ PlasmaExtras.Representation {
                                                 id: raisingLabel
                                                 anchors.centerIn: parent
                                                 text: i18n("RAISING")
+                                                color: full.ctpBase
+                                                font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                                font.bold: true
+                                            }
+                                        }
+
+                                        // Released for an egg rather than graduated (#242).
+                                        Rectangle {
+                                            visible: modelData.released === true
+                                            radius: height / 2
+                                            color: full.ctpOverlay0
+                                            implicitWidth: releasedLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
+                                            implicitHeight: releasedLabel.implicitHeight + 2
+
+                                            PlasmaComponents.Label {
+                                                id: releasedLabel
+                                                anchors.centerIn: parent
+                                                text: i18n("RELEASED")
                                                 color: full.ctpBase
                                                 font.pointSize: Kirigami.Theme.smallFont.pointSize
                                                 font.bold: true

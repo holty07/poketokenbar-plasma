@@ -83,6 +83,26 @@ KCM.SimpleKCM {
             petBubbles.checked = s.floating_pet_bubble_alerts;
         if (s.language !== undefined)
             language.currentIndex = language.keys.indexOf(s.language);
+        if (s.growth_difficulty !== undefined)
+            growthDifficulty.value = page.difficultyPosition(s.growth_difficulty);
+        if (s.shop_difficulty !== undefined)
+            shopDifficulty.value = page.difficultyPosition(s.shop_difficulty);
+    }
+
+    // Difficulty sliders are logarithmic over 0.1x..2x (upstream #244): the
+    // same ratio covers the same distance, and 1x snaps within 1% of the track.
+    readonly property real difficultyMin: 0.1
+    readonly property real difficultyMax: 2.0
+    function difficultyAt(position) {
+        var p = Math.min(Math.max(position, 0), 1);
+        if (Math.abs(p - page.difficultyPosition(1.0)) < 0.01)
+            return 1.0;
+        var v = page.difficultyMin * Math.pow(page.difficultyMax / page.difficultyMin, p);
+        return Math.round(v * 100) / 100;
+    }
+    function difficultyPosition(value) {
+        var v = Math.min(Math.max(Number(value) || 1.0, page.difficultyMin), page.difficultyMax);
+        return Math.log(v / page.difficultyMin) / Math.log(page.difficultyMax / page.difficultyMin);
     }
 
     Kirigami.FormLayout {
@@ -134,6 +154,46 @@ KCM.SimpleKCM {
     QQC2.Label {
         text: i18n("Off shows only the character")
         opacity: 0.7
+    }
+
+    // ---------------- Difficulty ----------------
+
+    Item { Kirigami.FormData.isSection: true; Kirigami.FormData.label: i18n("Difficulty") }
+
+    RowLayout {
+        Kirigami.FormData.label: i18n("Growth:")
+        // Labelled ends (upstream #398): which way is easier is not obvious.
+        QQC2.Label { text: i18n("Faster"); opacity: 0.7 }
+        QQC2.Slider {
+            id: growthDifficulty
+            from: 0; to: 1; value: page.difficultyPosition(1.0)
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 8
+            // Saved on release: a change rescales banked progress, so it is
+            // applied once rather than on every pixel of the drag.
+            onPressedChanged: if (!pressed) page.push("growth_difficulty", page.difficultyAt(value))
+        }
+        QQC2.Label { text: i18n("Slower"); opacity: 0.7 }
+        QQC2.Label { text: page.difficultyAt(growthDifficulty.value).toFixed(2) + "×" }
+    }
+
+    RowLayout {
+        Kirigami.FormData.label: i18n("Shop prices:")
+        QQC2.Label { text: i18n("Cheaper"); opacity: 0.7 }
+        QQC2.Slider {
+            id: shopDifficulty
+            from: 0; to: 1; value: page.difficultyPosition(1.0)
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 8
+            onPressedChanged: if (!pressed) page.push("shop_difficulty", page.difficultyAt(value))
+        }
+        QQC2.Label { text: i18n("Pricier"); opacity: 0.7 }
+        QQC2.Label { text: page.difficultyAt(shopDifficulty.value).toFixed(2) + "×" }
+    }
+
+    QQC2.Label {
+        text: i18n("Changing growth keeps the progress you've earned as a fraction — it never hatches or evolves by itself.")
+        opacity: 0.7
+        wrapMode: Text.Wrap
+        Layout.maximumWidth: Kirigami.Units.gridUnit * 20
     }
 
     // ---------------- Notifications ----------------

@@ -27,15 +27,34 @@ class ShopEntry:
     owned: bool = False
 
 
+# Consumables can be bought several at a time (#371); the Shiny Charm is
+# passive and eggs replace the companion, so both stay single-purchase.
+STACKABLE = ("rareCandy", "mint")
+
+
+def price(state: CompanionState, base: int) -> int:
+    """What the shop actually charges: base price x shop difficulty (#244)."""
+    return balance.scaled(base, state.shop_difficulty)
+
+
+def is_high_value(state: CompanionState) -> bool:
+    """A companion worth an extra confirmation before an egg discards it
+    (#335): legendary, or visibly shiny. Rare is deliberately excluded —
+    a prompt on every reroll trains people to click through it — and a
+    disguised Ditto's shininess stays secret."""
+    mon = state.active
+    return mon is not None and (mon.rarity == Rarity.LEGENDARY or mon.shows_shiny)
+
+
 def entries(state: CompanionState) -> list[ShopEntry]:
     """Everything on sale, cheapest first."""
     out = [
-        ShopEntry("rareCandy", "item", balance.RARE_CANDY_PRICE, "Rare Candy"),
-        ShopEntry("mint", "item", balance.MINT_PRICE, "Mint"),
+        ShopEntry("rareCandy", "item", price(state, balance.RARE_CANDY_PRICE), "Rare Candy"),
+        ShopEntry("mint", "item", price(state, balance.MINT_PRICE), "Mint"),
         ShopEntry(
             "shinyCharm",
             "item",
-            balance.SHINY_CHARM_PRICE,
+            price(state, balance.SHINY_CHARM_PRICE),
             "Shiny Charm",
             # Passive and permanent: held, never consumed, bought once.
             owned=state.inventory.get("shinyCharm", 0) > 0,
@@ -48,7 +67,7 @@ def entries(state: CompanionState) -> list[ShopEntry]:
             Rarity.UNCOMMON: "Uncommon Egg",
             Rarity.RARE: "Rare Egg",
         }[tier]
-        out.append(ShopEntry(key, "egg", balance.egg_price(tier), label))
+        out.append(ShopEntry(key, "egg", price(state, balance.egg_price(tier)), label))
     return sorted(out, key=lambda e: e.price)
 
 
@@ -60,46 +79,80 @@ def _debit(state: CompanionState, price: int) -> None:
     state.spent_tokens += price
 
 
-def buy(state: CompanionState, key: str) -> str:
-    """Purchase one shop entry. Returns a short description of what happened."""
+def max_buy_count(state: CompanionState, key: str) -> int:
+    """How many of `key` the wallet can afford in one purchase."""
+    entry = next((e for e in entries(state) if e.key == key), None)
+    if entry is None or entry.price <= 0:
+        return 0
+    if key not in STACKABLE:
+        return 0 if entry.owned or state.spendable_tokens < entry.price else 1
+    return state.spendable_tokens // entry.price
+
+
+def buy(state: CompanionState, key: str, count: int = 1, confirm: bool = False) -> str:
+    """Purchase a shop entry. Returns a short description of what happened.
+
+    `count` > 1 is allowed for stackable consumables only, and is all or
+    nothing: an unaffordable count buys none rather than as many as fit.
+    `confirm` must be set to discard a high-value companion for an egg.
+    """
     entry = next((e for e in entries(state) if e.key == key), None)
     if entry is None:
         raise ShopError(f"unknown shop item: {key}")
+    if count < 1:
+        raise ShopError("quantity must be at least 1")
+    if count > 1 and key not in STACKABLE:
+        raise ShopError(f"{entry.label} can only be bought one at a time")
 
     if entry.kind == "item":
         if entry.key == "shinyCharm" and entry.owned:
             raise ShopError("shiny charm is already held")
-        _debit(state, entry.price)
-        state.inventory[entry.key] = state.inventory.get(entry.key, 0) + 1
-        return f"bought {entry.label}"
+        _debit(state, entry.price * count)
+        state.inventory[entry.key] = state.inventory.get(entry.key, 0) + count
+        return f"bought {entry.label}" + (f" ×{count}" if count > 1 else "")
+
+    if is_high_value(state) and not confirm:
+        raise ShopError("this would release a legendary or shiny Pokémon; confirm to proceed")
 
     # Eggs replace the current companion outright.
     tier = {"egg": None, f"egg:{Rarity.UNCOMMON}": Rarity.UNCOMMON,
             f"egg:{Rarity.RARE}": Rarity.RARE}[entry.key]
     _debit(state, entry.price)
-    # The discarded companion is NOT graduated: it never entered the dex and
-    # must not affect collected_finals either — as if it had never hatched.
-    state.active = None
+    # The released companion keeps its Pokédex credit (#242) but is NOT
+    # graduated: collected_finals is untouched, so it doesn't count toward
+    # completion or repeat-hatch boosts.
+    companion.release(state)
     state.egg_usage = 0
     state.egg_tier = tier
     state.pending_hatch_id = None
     return f"bought {entry.label}"
 
 
-def use_item(state: CompanionState, key: str, rng=None) -> str:
-    """Consume one held item."""
+def use_item(state: CompanionState, key: str, rng=None, count: int = 1) -> str:
+    """Consume held items. Only Rare Candy can be used in bulk (#328)."""
     held = state.inventory.get(key, 0)
     if held <= 0:
         raise ShopError(f"no {key} in bag")
+    if count < 1:
+        raise ShopError("quantity must be at least 1")
+    if count > 1 and key != "rareCandy":
+        raise ShopError(f"{key} can only be used one at a time")
+    if count > held:
+        raise ShopError(f"only {held} {key} in bag")
 
     if key == "rareCandy":
         if state.active is None:
             raise ShopError("candy needs a hatched companion")
-        state.inventory[key] = held - 1
-        # Routed through apply_usage so carry-over, evolution, and graduation
-        # all behave exactly as they do for real usage.
-        companion.apply_usage(state, balance.RARE_CANDY_XP, rng=rng)
-        return "used Rare Candy"
+        used = 0
+        # One candy at a time through apply_usage, so carry-over, evolution
+        # and graduation behave exactly as real usage does. Stop at
+        # graduation: leftover candy stays in the bag rather than feeding an
+        # egg it can't help.
+        while used < count and state.active is not None:
+            state.inventory[key] -= 1
+            used += 1
+            companion.apply_usage(state, balance.RARE_CANDY_XP, rng=rng)
+        return "used Rare Candy" + (f" ×{used}" if used > 1 else "")
 
     if key == "mint":
         if state.active is None:
@@ -127,15 +180,61 @@ def window_key(kind: str) -> str:
     return f"limit:{kind}"
 
 
-def grant_candy(state: CompanionState, windows: dict[str, float]) -> int:
+def candy_preview(state: CompanionState, count: int) -> dict:
+    """What using `count` Rare Candies would do, without doing it (#328)."""
+    import copy
+    import random
+
+    sim = copy.deepcopy(state)
+    sim.inventory["rareCandy"] = max(count, sim.inventory.get("rareCandy", 0))
+    before = sim.active
+    if before is None or count < 1:
+        return {"count": 0, "evolutions": 0, "graduates": False, "used": 0}
+    start_stage = before.stage_index
+    dex_before = len(sim.dex)
+    used = 0
+    while used < count and sim.active is not None:
+        sim.inventory["rareCandy"] -= 1
+        used += 1
+        # Fixed seed: a preview must not consume the real RNG.
+        companion.apply_usage(sim, balance.RARE_CANDY_XP, rng=random.Random(0))
+    graduates = len(sim.dex) > dex_before
+    mon = sim.active
+    evolutions = (before.total_forms - 1 - start_stage) if graduates else (
+        (mon.stage_index if mon else start_stage) - start_stage
+    )
+    return {
+        "count": count,
+        "used": used,
+        "evolutions": max(0, evolutions),
+        "graduates": graduates,
+        "stage_progress": round(min(1.0, mon.used_at_stage / sim.stage_threshold(mon)), 4)
+        if mon is not None and not graduates
+        else 1.0,
+    }
+
+
+def grant_candy(
+    state: CompanionState, windows: dict[str, float], epochs: dict[str, str] | None = None
+) -> int:
     """Award candy for maxed limit windows. Edge-triggered.
 
-    `windows` maps kind ("session"/"weekly") to utilization percent.
+    `windows` maps kind ("session"/"weekly") to utilization percent;
+    `epochs` optionally maps the same kinds to the window's resets_at.
     Returns how many candies were granted.
     """
     granted = 0
+    epochs = epochs or {}
     for kind, utilization in windows.items():
         key = window_key(kind)
+        epoch = epochs.get(kind)
+        if epoch:
+            # A new window is a new chance, even when the dip below 100% was
+            # never observed (asleep or quit across the reset, #334).
+            previous_epoch = state.candy_window_epoch.get(key)
+            if previous_epoch is not None and previous_epoch != epoch:
+                state.candy_grant_tier.pop(key, None)
+            state.candy_window_epoch[key] = epoch
         tier = 2 if utilization >= 100 else (1 if utilization >= 80 else 0)
         previous = state.candy_grant_tier.get(key, 0)
 

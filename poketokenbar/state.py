@@ -181,7 +181,10 @@ def build(
             )
             if config_values.get("show_limit_in_menu")
             else [],
-            "sprite_path": (companion_payload or {}).get("sprite_path", ""),
+            # A pinned representative (#158) replaces the companion in the
+            # panel; unpinned, the panel shows the companion as before.
+            "sprite_path": (companion_payload or {}).get("representative_sprite_path")
+            or (companion_payload or {}).get("sprite_path", ""),
         },
     }
 

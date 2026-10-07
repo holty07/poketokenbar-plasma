@@ -101,3 +101,51 @@ def test_reload_config_command_is_applied(tmp_path):
     commands.enqueue("reload_config", {}, spool=spool)
     payload = d.poll_once()
     assert payload["panel"]["tokens_text"] == ""
+
+
+def _game_daemon(tmp_path):
+    import random
+
+    from poketokenbar import balance
+    from poketokenbar.balance import Rarity
+    from poketokenbar.companion import CompanionState, EvoLine, apply_usage
+    from poketokenbar.companion_store import CompanionStore
+
+    store = CompanionStore(save_path=tmp_path / "companion.json", rng=random.Random(1))
+    store.state = CompanionState()
+    store.state.claimed_today_tokens_by_provider = {}
+    line = EvoLine(base_id=1, path_ids=[1, 2, 3], rarity=Rarity.COMMON)
+    apply_usage(store.state, balance.EGG_HATCH_THRESHOLD, line_for_egg=line, rng=random.Random(1))
+    store.state.used_since_install = balance.MINT_PRICE * 10
+    d = _daemon(tmp_path, [])
+    d.companion_store = store
+    d.spool = tmp_path / "spool"
+    return d, store
+
+
+def test_buy_count_pin_and_difficulty_flow_through_the_daemon(tmp_path):
+    from poketokenbar import commands
+
+    d, store = _game_daemon(tmp_path)
+    commands.enqueue("buy", {"key": "mint", "count": 3}, spool=d.spool)
+    commands.enqueue("pin", {"species_id": 1}, spool=d.spool)
+    (tmp_path / "config.json").write_text('{"shop_difficulty": 0.5}', encoding="utf-8")
+    commands.enqueue("reload_config", {}, spool=d.spool)
+    payload = d.poll_once()
+    assert store.state.inventory["mint"] == 3
+    assert store.state.representative_id == 1
+    assert payload["companion"]["shop_difficulty"] == 0.5
+    assert payload["errors"] == []
+
+
+def test_releasing_a_legendary_without_confirm_is_reported_not_done(tmp_path):
+    from poketokenbar import balance, commands
+    from poketokenbar.balance import Rarity
+
+    d, store = _game_daemon(tmp_path)
+    store.state.active.rarity = Rarity.LEGENDARY
+    store.state.used_since_install = balance.FRESH_EGG_PRICE
+    commands.enqueue("buy", {"key": "egg", "count": 1}, spool=d.spool)
+    payload = d.poll_once()
+    assert store.state.active is not None
+    assert any("confirm" in e for e in payload["errors"])

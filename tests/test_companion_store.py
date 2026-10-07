@@ -127,3 +127,62 @@ def test_mon_payload_reports_stage_progress(tmp_path):
     assert payload["stage_index"] == 0
     assert payload["stage_threshold"] > 0
     assert payload["species_id"] >= 1
+
+
+def _hatched(tmp_path):
+    s = _store(tmp_path)
+    s.update({"claude_code": balance.EGG_HATCH_THRESHOLD}, today="2026-08-18")
+    assert s.state.active is not None
+    return s
+
+
+def test_representative_pin_requires_ownership_and_survives_release(tmp_path):
+    import pytest
+
+    s = _hatched(tmp_path)
+    with pytest.raises(ValueError):
+        s.set_representative(999)
+    s.set_representative(1)
+    assert s.state.representative_id == 1
+    # Released by an egg: species 1 is still owned, so the pin stays valid.
+    s.state.used_since_install = balance.FRESH_EGG_PRICE
+    s.buy("egg")
+    assert 1 in s.owned_species()
+    s.set_representative(None)
+    assert s.state.representative_id is None
+
+
+def test_payload_hides_a_disguised_dittos_shine(tmp_path):
+    s = _hatched(tmp_path)
+    s.state.active.is_shiny = True
+    s.state.active.ditto_disguise = 1
+    assert s.payload()["is_shiny"] is False
+    assert s.catch_log_payload()[0]["is_shiny"] is False
+    assert all(not row["is_shiny"] for row in s.dex_payload())
+
+
+def test_payload_uses_difficulty_scaled_thresholds(tmp_path):
+    s = _store(tmp_path)
+    s.apply_difficulty(0.5, 1.0)
+    assert s.payload()["remaining_tokens"] == balance.EGG_HATCH_THRESHOLD // 2
+    s.update({"claude_code": balance.EGG_HATCH_THRESHOLD // 2}, today="2026-08-18")
+    assert s.state.active is not None
+    mon = s.state.active
+    assert s.payload()["stage_threshold"] == round(mon.phase_threshold * 0.5)
+
+
+def test_shop_and_bag_payloads_expose_bulk_fields(tmp_path):
+    s = _hatched(tmp_path)
+    s.state.used_since_install = balance.MINT_PRICE * 4
+    mint = next(row for row in s.shop_payload() if row["key"] == "mint")
+    assert mint["stackable"] is True and mint["max_count"] == 4
+    s.state.inventory["rareCandy"] = 2
+    candy = next(row for row in s.bag_payload() if row["key"] == "rareCandy")
+    assert [p["count"] for p in candy["previews"]] == [1, 2]
+
+
+def test_catch_log_marks_released_entries(tmp_path):
+    s = _hatched(tmp_path)
+    s.state.used_since_install = balance.FRESH_EGG_PRICE
+    s.buy("egg")
+    assert s.catch_log_payload()[0]["released"] is True

@@ -116,16 +116,21 @@ class CompanionStore:
                 "detail": f"It became {name}." if name else "It evolved.",
             }
         elif events.hatched is not None:
-            shiny = mon is not None and mon.is_shiny
+            shiny = mon is not None and mon.shows_shiny
             self.celebration = {
                 "kind": "shiny" if shiny else "hatched",
                 "title": "A shiny hatched!" if shiny else "It hatched!",
                 "detail": (
-                    f"A shiny {name} — 1 in {balance.SHINY_DENOMINATOR}!"
+                    f"A shiny {name} — 1 in {self.shiny_odds()}!"
                     if shiny
                     else f"{name} came out of the egg."
                 ),
             }
+
+    def shiny_odds(self) -> int:
+        """The denominator a hatch rolls at right now (#351). The charm is
+        permanent once bought, so this is also what the last hatch used."""
+        return balance.shiny_denominator(self.state.inventory.get("shinyCharm", 0) > 0)
 
     def _line_for_egg(self):
         """Species data for a hatch, or None when offline."""
@@ -168,16 +173,69 @@ class CompanionStore:
         mon = self.state.active
         if mon is None or self.sprites is None:
             return ""
-        path = self.sprites.path(mon.current_id, animated=True, shiny=mon.is_shiny)
+        path = self.sprites.path(mon.current_id, animated=True, shiny=mon.shows_shiny)
         return str(path) if path else ""
+
+    # --- representative (#158) ---------------------------------------------
+
+    def owned_species(self) -> dict[int, bool]:
+        """Species the player owns -> whether they own it shiny. Graduated and
+        released chains plus the companion's reached forms; a disguised
+        Ditto's shine stays hidden."""
+        owned: dict[int, bool] = {}
+        for entry in self.state.dex:
+            for species_id in entry.chain_order:
+                owned[species_id] = owned.get(species_id, False) or entry.is_shiny
+        mon = self.state.active
+        if mon is not None:
+            for species_id in mon.path_ids[: mon.stage_index + 1]:
+                owned[species_id] = owned.get(species_id, False) or mon.shows_shiny
+        return owned
+
+    def set_representative(self, species_id: int | None) -> str:
+        """Pin a species for the panel and floating pet; None un-pins."""
+        if species_id is not None and species_id not in self.owned_species():
+            raise ValueError(f"species {species_id} is not in your collection")
+        self.state.representative_id = species_id
+        self._persist()
+        return "representative cleared" if species_id is None else "representative pinned"
+
+    def representative_sprite_path(self) -> str:
+        """The pinned species' sprite, or "" for the default (the companion or
+        egg). A pin to a species no longer owned quietly falls back."""
+        rep = self.state.representative_id
+        if rep is None or self.sprites is None:
+            return ""
+        owned = self.owned_species()
+        if rep not in owned:
+            return ""
+        path = self.sprites.path(rep, animated=True, shiny=owned[rep])
+        return str(path) if path else ""
+
+    # --- difficulty (#244) -------------------------------------------------
+
+    def apply_difficulty(self, growth: float, shop_value: float) -> None:
+        changed = companion.set_growth_difficulty(self.state, growth)
+        changed = companion.set_shop_difficulty(self.state, shop_value) or changed
+        if changed:
+            self._persist()
 
     def payload(self, today_tokens: int = 0, limit_warning: bool = False) -> dict:
         """Companion section of state.json."""
         kind = companion.display_state(self.state, today_tokens, limit_warning)
         mon = self.state.active
+        common = {
+            "representative_id": self.state.representative_id,
+            "representative_sprite_path": self.representative_sprite_path(),
+            "high_value": shop.is_high_value(self.state),
+            "growth_difficulty": self.state.growth_difficulty,
+            "shop_difficulty": self.state.shop_difficulty,
+            "shiny_odds": self.shiny_odds(),
+        }
         if mon is None:
-            progress = min(1.0, self.state.egg_usage / balance.EGG_HATCH_THRESHOLD)
-            remaining = max(0, balance.EGG_HATCH_THRESHOLD - self.state.egg_usage)
+            egg_threshold = self.state.egg_threshold()
+            progress = min(1.0, self.state.egg_usage / egg_threshold)
+            remaining = max(0, egg_threshold - self.state.egg_usage)
             return {
                 "stage": "egg",
                 "label": f"\N{EGG}{round(progress * 100)}% ({_compact(remaining)})",
@@ -192,15 +250,16 @@ class CompanionStore:
                 "spendable_text": _compact(self.state.spendable_tokens),
                 "display_state": kind,
                 "status_message": l10n.t(f"status_{kind.lower()}", self.state.language),
+                **common,
             }
 
-        threshold = balance.phase_threshold(mon.rarity, mon.total_forms, mon.stage_index)
+        threshold = self.state.stage_threshold(mon)
         # Remaining to the NEXT step: an evolution mid-line, graduation at the end.
         remaining = max(0, threshold - mon.used_at_stage)
         evo_line = []
         if self.sprites is not None:
             for index, species_id in enumerate(mon.path_ids):
-                path = self.sprites.path(species_id, animated=False, shiny=mon.is_shiny)
+                path = self.sprites.path(species_id, animated=False, shiny=mon.shows_shiny)
                 evo_line.append(
                     {
                         "species_id": species_id,
@@ -220,8 +279,9 @@ class CompanionStore:
             "remaining_text": _compact(remaining),
             "goal": "graduation" if mon.is_final_form else "next evolution",
             "evo_line": evo_line,
-            "is_shiny": mon.is_shiny,
+            "is_shiny": mon.shows_shiny,
             "nature": mon.nature,
+            "growth_boost": mon.has_growth_boost,
             "rarity": str(mon.rarity),
             "stage_index": mon.stage_index,
             "total_forms": mon.total_forms,
@@ -236,22 +296,23 @@ class CompanionStore:
             "spendable_text": _compact(self.state.spendable_tokens),
             "display_state": kind,
             "status_message": l10n.t(f"status_{kind.lower()}", self.state.language),
+            **common,
         }
 
     # --- economy -----------------------------------------------------------
 
-    def grant_candy(self, windows: dict[str, float]) -> int:
-        granted = shop.grant_candy(self.state, windows)
+    def grant_candy(self, windows: dict[str, float], epochs: dict[str, str] | None = None) -> int:
+        granted = shop.grant_candy(self.state, windows, epochs)
         self._persist()
         return granted
 
-    def buy(self, key: str) -> str:
-        message = shop.buy(self.state, key)
+    def buy(self, key: str, count: int = 1, confirm: bool = False) -> str:
+        message = shop.buy(self.state, key, count=count, confirm=confirm)
         self._persist()
         return message
 
-    def use_item(self, key: str) -> str:
-        message = shop.use_item(self.state, key, rng=self.rng)
+    def use_item(self, key: str, count: int = 1) -> str:
+        message = shop.use_item(self.state, key, rng=self.rng, count=count)
         self._persist()
         return message
 
@@ -290,13 +351,15 @@ class CompanionStore:
                     "owned": e.owned,
                     "owned_count": self.state.inventory.get(e.key, 0),
                     "affordable": spendable >= e.price and not e.owned,
+                    "stackable": e.key in shop.STACKABLE,
+                    "max_count": shop.max_buy_count(self.state, e.key),
                 }
             )
         return out
 
     def bag_payload(self) -> list[dict]:
         emoji = {"rareCandy": "\N{CANDY}", "mint": "\N{HERB}", "shinyCharm": "\N{SPARKLES}"}
-        return [
+        rows = [
             {
                 "key": key,
                 "label": balance.ITEM_LABEL.get(key, key),
@@ -312,6 +375,16 @@ class CompanionStore:
             for key, count in sorted(self.state.inventory.items())
             if count > 0
         ]
+        for row in rows:
+            # Bulk candy previews (#328): what using all of them would do.
+            # previews[n - 1] describes using n candies; capped so a huge
+            # stash doesn't make every poll simulate thousands of candies.
+            if row["key"] == "rareCandy" and row["usable"]:
+                row["previews"] = [
+                    shop.candy_preview(self.state, n)
+                    for n in range(1, min(row["count"], 30) + 1)
+                ]
+        return rows
 
     def dex_payload(self) -> list[dict]:
         """Species-level collection — ports dexSpecies.
@@ -335,6 +408,8 @@ class CompanionStore:
                 )
                 if entry.is_shiny:
                     slot["is_shiny"] = True
+                # Released entries are permanent too (#242), so "graduated"
+                # here means "no longer depends on the current companion".
                 slot["graduated"] = True
 
         mon = self.state.active
@@ -344,7 +419,7 @@ class CompanionStore:
                     species_id,
                     {"rarity": str(mon.rarity), "is_shiny": False, "graduated": False},
                 )
-                if mon.is_shiny:
+                if mon.shows_shiny:
                     slot["is_shiny"] = True
 
         out = []
@@ -364,6 +439,7 @@ class CompanionStore:
                     "rarity": slot["rarity"],
                     "is_shiny": slot["is_shiny"],
                     "is_raising": not slot["graduated"],
+                    "is_representative": species_id == self.state.representative_id,
                     "sprite_path": sprite,
                 }
             )
@@ -400,6 +476,7 @@ class CompanionStore:
                 "caught_at": e.caught_at,
                 "raised_text": _duration(e.raised_seconds),
                 "raising": False,
+                "released": e.released,
             }
             for e in self.state.dex
         ]
@@ -413,11 +490,12 @@ class CompanionStore:
                 {
                     "rarity": str(mon.rarity),
                     "nature": mon.nature,
-                    "is_shiny": mon.is_shiny,
-                    "chain": self._chain(mon.path_ids[: mon.stage_index + 1], mon.is_shiny),
+                    "is_shiny": mon.shows_shiny,
+                    "chain": self._chain(mon.path_ids[: mon.stage_index + 1], mon.shows_shiny),
                     "caught_at": mon.hatched_at,
                     "raised_text": "",
                     "raising": True,
+                    "released": False,
                 },
             )
         return out
