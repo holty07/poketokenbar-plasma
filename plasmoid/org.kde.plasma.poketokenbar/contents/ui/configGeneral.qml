@@ -137,8 +137,9 @@ KCM.SimpleKCM {
     QQC2.ComboBox {
         id: language
         Kirigami.FormData.label: i18n("Language:")
-        readonly property var keys: ["en", "ko", "ja", "es"]
-        model: ["English", "한국어", "日本語", "Español"]
+        readonly property var keys: ["en", "ko", "ja", "es", "fr", "pt", "de", "ru"]
+        model: ["English", "한국어", "日本語", "Español", "Français", "Português (Brasil)",
+                "Deutsch", "Русский"]
         onActivated: page.push("language", keys[currentIndex])
     }
 

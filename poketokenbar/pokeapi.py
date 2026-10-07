@@ -23,7 +23,8 @@ REST_BASE = "https://pokeapi.co/api/v2"
 GRAPHQL_URL = "https://graphql.pokeapi.co/v1beta2"
 # Gen I-V. The animated Black/White sprites the panel uses stop here.
 MAX_SPECIES_ID = 649
-LANG_CODES = ("ko", "en", "ja-Hrkt", "ja", "es")
+# PokéAPI has no Portuguese or Russian species names; those fall back to English.
+LANG_CODES = ("ko", "en", "ja-Hrkt", "ja", "es", "fr", "de")
 # PokéAPI's GraphQL endpoint answers 403 to urllib's default User-Agent.
 USER_AGENT = "poketokenbar/0.1 (+https://github.com/chattymin/PokeTokenBar)"
 
