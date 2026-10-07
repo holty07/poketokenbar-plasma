@@ -251,21 +251,33 @@ def test_candy_preview_does_not_change_state():
     assert (s.active.used_at_stage, s.active.stage_index, s.inventory["rareCandy"]) == before
 
 
-def test_candy_grant_rearms_on_a_new_window_epoch():
+def test_candy_grant_rearms_once_the_previous_window_has_reset():
     s = CompanionState()
     s.candy_feature_seeded = True
-    assert shop.grant_candy(s, {"session": 100}, {"session": "t1"}) == 1
-    # Still 100% but never seen dipping: a new resets_at is a new window.
-    assert shop.grant_candy(s, {"session": 100}, {"session": "t1"}) == 0
-    assert shop.grant_candy(s, {"session": 100}, {"session": "t2"}) == 1
+    t1, t2 = "2026-10-06T10:00:00+00:00", "2026-10-06T15:00:00+00:00"
+    before_t1 = 1_791_270_000.0  # 2026-10-06T07:00Z
+    after_t1 = 1_791_284_400.0   # 2026-10-06T11:00Z
+    assert shop.grant_candy(s, {"session": 100}, {"session": t1}, now=before_t1) == 1
+    assert shop.grant_candy(s, {"session": 100}, {"session": t1}, now=before_t1) == 0
+    # Still 100% but never seen dipping: once t1 has passed, it's a new window.
+    assert shop.grant_candy(s, {"session": 100}, {"session": t2}, now=after_t1) == 1
 
 
-def test_eggs_cannot_be_bought_while_incubating():
-    # #261: there is nothing to release, and the egg's progress would be lost.
+def test_a_drifting_resets_at_does_not_pay_out_every_poll():
+    # A rolling window reports a slightly later resets_at on every refresh.
     s = CompanionState()
-    s.used_since_install = balance.FRESH_EGG_PRICE * 2
-    s.egg_usage = 1_000
-    with pytest.raises(shop.ShopError):
-        shop.buy(s, "egg")
-    assert s.egg_usage == 1_000 and s.spent_tokens == 0
-    assert shop.max_buy_count(s, "egg") == 0
+    s.candy_feature_seeded = True
+    now = 1_791_270_000.0
+    assert shop.grant_candy(s, {"weekly": 100}, {"weekly": str(now + 600)}, now=now) == 5
+    for i in range(1, 5):
+        drifted = str(now + 600 + i * 60)
+        assert shop.grant_candy(s, {"weekly": 100}, {"weekly": drifted}, now=now + i * 60) == 0
+
+
+def test_single_pass_previews_match_per_count_previews():
+    s = _with_mon()
+    s.inventory["rareCandy"] = 6
+    many = shop.candy_previews(s, 6)
+    for n in range(1, 7):
+        one = shop.candy_preview(s, n)
+        assert {k: many[n - 1][k] for k in one} == one

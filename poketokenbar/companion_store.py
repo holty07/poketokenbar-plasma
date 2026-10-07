@@ -132,7 +132,9 @@ class CompanionStore:
         mon = self.state.active
         if mon is not None and mon.current_id == species_id and mon.profile is not None:
             return mon.profile, mon.nature
-        by_newest = sorted(self.state.dex, key=lambda e: e.caught_at or 0, reverse=True)
+        by_newest = self._dex_by_newest or sorted(
+            self.state.dex, key=lambda e: e.caught_at or 0, reverse=True
+        )
         for entry in by_newest:
             if entry.final_id == species_id and entry.profile is not None:
                 return entry.profile, entry.nature
@@ -541,13 +543,10 @@ class CompanionStore:
         ]
         for row in rows:
             # Bulk candy previews (#328): what using all of them would do.
-            # previews[n - 1] describes using n candies; capped so a huge
+            # previews[n - 1] describes using n candies; capped at 99 so a huge
             # stash doesn't make every poll simulate thousands of candies.
             if row["key"] == "rareCandy" and row["usable"]:
-                row["previews"] = [
-                    shop.candy_preview(self.state, n)
-                    for n in range(1, min(row["count"], 30) + 1)
-                ]
+                row["previews"] = shop.candy_previews(self.state, min(row["count"], 99))
         return rows
 
     def dex_payload(self) -> list[dict]:
@@ -589,6 +588,8 @@ class CompanionStore:
         out = []
         unown_owned = self.unown_forms()
         appearances = self.owned_appearances()
+        # Sorted once for every species' entry lookup below.
+        self._dex_by_newest = sorted(self.state.dex, key=lambda e: e.caught_at or 0, reverse=True)
         for species_id in sorted(acc):
             slot = acc[species_id]
             sprite = self._sprite(species_id, slot["is_shiny"])
@@ -644,7 +645,10 @@ class CompanionStore:
                     "sprite_path": sprite,
                 }
             )
+        self._dex_by_newest = None
         return out
+
+    _dex_by_newest: list | None = None
 
     def _profile_args(self, species_id: int):
         prof, nature = self._individual_for(species_id)

@@ -66,10 +66,19 @@ def periods(history: dict[str, dict[str, dict]], today: date) -> dict:
     return {"week": week, "month": month}
 
 
-def payload(history: dict[str, dict[str, dict]]) -> dict:
+# Years of history published to the popup, counting the current one. The
+# recap can step back this far; older days stay in the logs.
+PUBLISHED_YEARS = 3
+
+
+def payload(history: dict[str, dict[str, dict]], today: date | None = None) -> dict:
     """Compact form for state.json: day -> provider -> [tokens, cost]. The
-    popup aggregates it into the month trend and any recap period."""
+    popup aggregates it into the month trend and any recap period. Trimmed
+    to PUBLISHED_YEARS so state.json — re-read every 2 s — stays bounded."""
+    today = today or date.today()  # noqa: DTZ011 - local calendar day
+    cutoff = f"{today.year - PUBLISHED_YEARS + 1}-01-01"
     return {
         day: {pid: [v["tokens"], round(v["cost"], 4)] for pid, v in sorted(by.items())}
         for day, by in sorted(history.items())
+        if day >= cutoff
     }

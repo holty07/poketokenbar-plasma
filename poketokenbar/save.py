@@ -85,7 +85,9 @@ def _decode_mon(raw) -> MonState | None:
     stage = min(max(0, stage), len(path_ids) - 1)
     # Dedup, then re-find the displayed species so the stage still points at it.
     current = path_ids[stage]
-    path_ids = _dedup(path_ids)
+    deduped = _dedup(path_ids)
+    shortened = len(deduped) != len(path_ids) or len(_dedup(planned)) != len(planned)
+    path_ids = deduped
     planned = _dedup(planned)
     stage = path_ids.index(current)
 
@@ -96,7 +98,11 @@ def _decode_mon(raw) -> MonState | None:
         stage_index=stage,
         used_at_stage=_lenient(raw, "used_at_stage", int, 0),
         rarity=_rarity(raw.get("rarity")),
-        total_forms=_lenient(raw, "total_forms", int, len(path_ids)),
+        # A chain that lost duplicates also lost stages: the stored form count
+        # would weight thresholds for stages that no longer exist.
+        total_forms=max(len(path_ids), len(planned))
+        if shortened
+        else _lenient(raw, "total_forms", int, len(path_ids)),
         is_shiny=_lenient(raw, "is_shiny", bool, False),
         nature=raw.get("nature") if isinstance(raw.get("nature"), str) else None,
         has_growth_boost=_lenient(raw, "has_growth_boost", bool, False),

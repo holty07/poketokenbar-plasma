@@ -67,6 +67,9 @@ class PokeAPI:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._species: dict[int, dict] = {}
         self._lines: dict[int, EvoLine] = {}
+        # Details are immutable; keep what was read so payloads don't re-read
+        # and re-parse a file per species every poll.
+        self._details: dict[int, dict] = {}
 
     # --- hatch candidates --------------------------------------------------
 
@@ -190,11 +193,16 @@ class PokeAPI:
     def details_cached(self, species_id: int) -> dict | None:
         """Details from disk only — never the network. Stale is fine here:
         base stats and learnsets don't change."""
+        if species_id in self._details:
+            return self._details[species_id]
         try:
             raw = json.loads(self._details_file(species_id).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
-        return raw.get("details") if isinstance(raw, dict) else None
+        details = raw.get("details") if isinstance(raw, dict) else None
+        if details:
+            self._details[species_id] = details
+        return details
 
     def details(self, species_id: int) -> dict:
         """Default-form battle metadata: disk cache (30 days) -> REST, with a
@@ -216,6 +224,7 @@ class PokeAPI:
                 return stale
             raise
         details = normalize_details(species_id, mon, species)
+        self._details[species_id] = details
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps({"fetched_at": time.time(), "details": details}), encoding="utf-8")

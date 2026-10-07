@@ -64,7 +64,26 @@ def _describe(snapshot_id: str, path: Path, date: float, state: CompanionState) 
     )
 
 
+# path -> ((mtime_ns, size), result). Listing runs every poll; without this
+# each one re-decoded every snapshot just to read its date and summary.
+_READ_CACHE: dict[Path, tuple[tuple[int, int], tuple[float, CompanionState] | None]] = {}
+
+
 def _read(path: Path) -> tuple[float, CompanionState] | None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    signature = (stat.st_mtime_ns, stat.st_size)
+    cached = _READ_CACHE.get(path)
+    if cached is not None and cached[0] == signature:
+        return cached[1]
+    result = _read_uncached(path)
+    _READ_CACHE[path] = (signature, result)
+    return result
+
+
+def _read_uncached(path: Path) -> tuple[float, CompanionState] | None:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
         state = transfer.decode(raw)
@@ -113,6 +132,7 @@ def create(state: CompanionState, save_path: Path, now: float | None = None) -> 
 def prune(save_path: Path, keep: int = MAX_KEEP) -> None:
     for old in list_snapshots(save_path)[keep:]:
         old.path.unlink(missing_ok=True)
+        _READ_CACHE.pop(old.path, None)
 
 
 def auto_snapshot_if_due(
@@ -134,7 +154,7 @@ def load(save_path: Path, snapshot_id: str) -> CompanionState:
     folder; anything that would escape it is refused."""
     if "/" in snapshot_id or "\\" in snapshot_id or not snapshot_id.startswith(PREFIX):
         raise transfer.TransferError(f"not a snapshot: {snapshot_id}")
-    read = _read(directory(save_path) / snapshot_id)
+    read = _read_uncached(directory(save_path) / snapshot_id)
     if read is None:
         raise transfer.TransferError(f"snapshot unreadable or missing: {snapshot_id}")
     return read[1]
@@ -144,5 +164,5 @@ def latest_valid(save_path: Path) -> CompanionState | None:
     snapshots = list_snapshots(save_path)
     if not snapshots:
         return None
-    read = _read(snapshots[0].path)
+    read = _read_uncached(snapshots[0].path)
     return read[1] if read else None

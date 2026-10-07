@@ -21,7 +21,14 @@ class FakeProvider:
         return self._daily
 
     def scan_entries(self):
-        return ["entry"] if self._history else []
+        if not self._history:
+            return []
+        from datetime import UTC, datetime
+
+        from poketokenbar.models import Entry
+
+        when = datetime(2026, 8, 1, tzinfo=UTC)
+        return [Entry(id="e", date=when, local_day="2026-08-01", model="m", output=5)]
 
     def fetch_enrichment(self):
         return ProviderEnrichment()

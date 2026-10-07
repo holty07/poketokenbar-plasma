@@ -120,6 +120,12 @@ class Daemon:
                     errors.append(f"{name}: {exc}")
 
         today_str = date.today().strftime("%Y-%m-%d")
+        # Per-day history for the trend and recap; week/month come from it
+        # so every provider counts, not only those with fetch_periods(). It
+        # also answers "has this provider ever been used?" without a rescan.
+        usage_history = history.collect(self.providers, errors)
+        periods = history.periods(usage_history, date.fromisoformat(today_str))
+        providers_with_history = {pid for day in usage_history.values() for pid in day}
         daily_by_provider: dict[str, DailyUsage] = {}
         for provider in self.providers:
             try:
@@ -135,18 +141,8 @@ class Daemon:
             # doesn't vanish from the panel between sessions. A provider
             # that has never run at all (no logs anywhere) stays out
             # entirely — that's "not installed", not "no usage yet".
-            scan_entries = getattr(provider, "scan_entries", None)
-            try:
-                has_history = bool(scan_entries()) if scan_entries is not None else False
-            except Exception:
-                has_history = False
-            if has_history:
+            if provider.id in providers_with_history:
                 daily_by_provider[provider.id] = DailyUsage(date=today_str)
-
-        # Per-day history for the trend and recap; week/month come from it
-        # so every provider counts, not only those with fetch_periods().
-        usage_history = history.collect(self.providers, errors)
-        periods = history.periods(usage_history, date.fromisoformat(today_str))
 
         limit_status = None
         if self.limits_source is not None:
@@ -253,7 +249,7 @@ class Daemon:
             rarity_counts=self.companion_store.rarity_counts() if self.companion_store else None,
             catch_counts=self.companion_store.catch_rarity_counts() if self.companion_store else None,
             snapshots=self.companion_store.snapshots_payload() if self.companion_store else None,
-            history=history.payload(usage_history),
+            history=history.payload(usage_history, date.fromisoformat(today_str)),
             periods=periods,
             burn=self.burn.payload() if self.burn is not None else None,
             provider_status=status_payload,

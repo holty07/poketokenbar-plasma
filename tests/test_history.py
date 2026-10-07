@@ -50,3 +50,8 @@ def test_payload_is_compact_and_sorted():
                            "2026-10-01": {"a": {"tokens": 2, "cost": 0.0}}})
     assert list(out) == ["2026-10-01", "2026-10-02"]
     assert out["2026-10-02"] == {"b": [1, 0.1235]}
+
+
+def test_payload_keeps_three_calendar_years():
+    h = {d: {"codex": {"tokens": 1, "cost": 0.0}} for d in ("2023-12-31", "2024-01-01", "2026-10-07")}
+    assert list(history.payload(h, date(2026, 10, 7))) == ["2024-01-01", "2026-10-07"]

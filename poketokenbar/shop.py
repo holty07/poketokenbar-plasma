@@ -187,6 +187,41 @@ def window_key(kind: str) -> str:
     return f"limit:{kind}"
 
 
+def candy_previews(state: CompanionState, max_count: int) -> list[dict]:
+    """previews[n - 1] describes using n candies, for n = 1..max_count, from
+    one simulation rather than one per count (#328)."""
+    import copy
+    import random
+
+    if state.active is None or max_count < 1:
+        return []
+    sim = copy.deepcopy(state)
+    sim.inventory["rareCandy"] = max_count
+    start_stage = sim.active.stage_index
+    total_forms = sim.active.total_forms
+    dex_before = len(sim.dex)
+    rng = random.Random(0)  # a preview must not consume the real RNG
+    out = []
+    used = 0
+    for n in range(1, max_count + 1):
+        if sim.active is not None:
+            sim.inventory["rareCandy"] -= 1
+            used += 1
+            companion.apply_usage(sim, balance.RARE_CANDY_XP, rng=rng)
+        graduates = len(sim.dex) > dex_before
+        mon = sim.active
+        out.append({
+            "count": n,
+            "used": used,
+            "evolutions": max(0, (total_forms - 1 - start_stage) if graduates
+                              else (mon.stage_index - start_stage)),
+            "graduates": graduates,
+            "stage_progress": 1.0 if graduates or mon is None
+            else round(min(1.0, mon.used_at_stage / sim.stage_threshold(mon)), 4),
+        })
+    return out
+
+
 def candy_preview(state: CompanionState, count: int) -> dict:
     """What using `count` Rare Candies would do, without doing it (#328)."""
     import copy
@@ -221,8 +256,26 @@ def candy_preview(state: CompanionState, count: int) -> dict:
     }
 
 
+def _has_passed(stamp: str, now: float) -> bool:
+    """Whether an ISO-8601 or epoch-seconds reset time is in the past.
+    Unparseable stamps never count as passed."""
+    from datetime import datetime
+
+    try:
+        when = float(stamp)
+    except ValueError:
+        try:
+            when = datetime.fromisoformat(stamp).timestamp()  # 3.11+ accepts a "Z"
+        except ValueError:
+            return False
+    return when <= now
+
+
 def grant_candy(
-    state: CompanionState, windows: dict[str, float], epochs: dict[str, str] | None = None
+    state: CompanionState,
+    windows: dict[str, float],
+    epochs: dict[str, str] | None = None,
+    now: float | None = None,
 ) -> int:
     """Award candy for maxed limit windows. Edge-triggered.
 
@@ -230,16 +283,26 @@ def grant_candy(
     `epochs` optionally maps the same kinds to the window's resets_at.
     Returns how many candies were granted.
     """
+    import time
+
     granted = 0
     epochs = epochs or {}
+    now = time.time() if now is None else now
     for kind, utilization in windows.items():
         key = window_key(kind)
         epoch = epochs.get(kind)
         if epoch:
             # A new window is a new chance, even when the dip below 100% was
-            # never observed (asleep or quit across the reset, #334).
+            # never observed (asleep or quit across the reset, #334). Only a
+            # reset that has actually *passed* counts: a rolling window
+            # reports a slightly different resets_at on every refresh, and
+            # rearming on any change would pay out every poll.
             previous_epoch = state.candy_window_epoch.get(key)
-            if previous_epoch is not None and previous_epoch != epoch:
+            if (
+                previous_epoch is not None
+                and previous_epoch != epoch
+                and _has_passed(previous_epoch, now)
+            ):
                 state.candy_grant_tier.pop(key, None)
             state.candy_window_epoch[key] = epoch
         tier = 2 if utilization >= 100 else (1 if utilization >= 80 else 0)

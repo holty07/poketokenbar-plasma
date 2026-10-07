@@ -189,3 +189,10 @@ def test_repeated_species_in_chains_are_dropped_on_load(tmp_path):
     assert loaded.active.planned_path_ids == [1, 2, 3]
     assert loaded.active.current_id == 2  # still the species it was showing
     assert loaded.dex[0].chain_order == [4, 5, 6]
+
+
+def test_dedup_also_fixes_the_stored_form_count(tmp_path):
+    p = tmp_path / "companion.json"
+    p.write_text(json.dumps({"active": {"base_id": 1, "path_ids": [1, 2, 2, 3],
+                                        "stage_index": 0, "rarity": "common", "total_forms": 4}}))
+    assert save.load(p).active.total_forms == 3
