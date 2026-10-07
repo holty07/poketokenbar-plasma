@@ -113,3 +113,9 @@ def test_species_roll_halves_the_weight_of_completed_lines(tmp_path):
     picks = Counter(api.roll_base_species(rng, collected_bases={1}) for _ in range(9000))
     # weights 50 vs 100 -> line 1 about a third of the time
     assert 0.30 < picks[1] / 9000 < 0.37
+
+
+def test_pinning_unown_without_a_letter_uses_one_that_is_owned(tmp_path):
+    store = _store_with_letters(tmp_path, ["question"])
+    store.set_representative(UNOWN)
+    assert store.state.representative_unown_form == "question"

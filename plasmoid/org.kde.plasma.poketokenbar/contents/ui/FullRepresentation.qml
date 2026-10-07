@@ -194,8 +194,175 @@ PlasmaExtras.Representation {
     }
 
     function money(v) {
-        return "$" + (v ? v.toFixed(2) : "0.00");
+        return "$" + (v ? v.toFixed(2) : "0.00").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
     }
+
+    // ---- usage history: month trend and recap (upstream #270/#332/#348/#367/#368/#395) ----
+    readonly property var usageHistory: root.appState && root.appState.history ? root.appState.history : ({})
+    // Categorical slots in a fixed order; colour follows the provider, never
+    // its rank. Validated (dataviz validator) against the Mocha base surface:
+    // adjacent CVD ΔE ≥ 8.4, normal-vision ΔE ≥ 19.3, all ≥ 3:1.
+    readonly property var providerSlots: ["claude_code", "codex", "opencode", "antigravity",
+                                          "cursor", "hermes", "kiro", "pi"]
+    readonly property var slotColors: ["#3987e5", "#d95926", "#199e70", "#c98500",
+                                       "#d55181", "#008300", "#9085e9", "#e66767"]
+    readonly property var providerNames: ({
+        claude_code: "Claude Code", codex: "Codex", opencode: "opencode",
+        antigravity: "Antigravity", cursor: "Cursor", hermes: "Hermes", kiro: "Kiro",
+        pi: "Pi", omp: "omp", aside: "Aside", kimi_code: "Kimi Code", other: i18n("Other")
+    })
+    property string recapPeriod: "month"   // "week" | "month" | "year"
+    property int recapOffset: 0            // 0 = current period, -1 = the one before...
+
+    // Anything past the eight slots folds into "Other" rather than a new hue.
+    function seriesId(pid) {
+        return full.providerSlots.indexOf(pid) >= 0 ? pid : "other";
+    }
+    function providerColor(pid) {
+        var i = full.providerSlots.indexOf(pid);
+        return i >= 0 ? full.slotColors[i] : full.ctpOverlay0;
+    }
+    function providerName(pid) {
+        return full.providerNames[pid] || pid;
+    }
+    function seriesOrder(pid) {
+        var i = full.providerSlots.indexOf(pid);
+        return i >= 0 ? i : 99;
+    }
+    function pad(n) { return n < 10 ? "0" + n : String(n); }
+    function dayKey(d) { return d.getFullYear() + "-" + full.pad(d.getMonth() + 1) + "-" + full.pad(d.getDate()); }
+
+    // One bucket from a list of day keys.
+    function bucketFor(label, tip, keys, muted) {
+        var seg = {};
+        var total = 0, cost = 0;
+        for (var i = 0; i < keys.length; i++) {
+            var day = full.usageHistory[keys[i]];
+            if (!day)
+                continue;
+            for (var pid in day) {
+                var id = full.seriesId(pid);
+                if (!seg[id])
+                    seg[id] = { id: id, tokens: 0, cost: 0 };
+                seg[id].tokens += day[pid][0];
+                seg[id].cost += day[pid][1];
+                total += day[pid][0];
+                cost += day[pid][1];
+            }
+        }
+        var segments = Object.keys(seg).map(function (k) { return seg[k]; });
+        segments.sort(function (a, b) { return full.seriesOrder(a.id) - full.seriesOrder(b.id); });
+        return { label: label, tip: tip, segments: segments, total: total, cost: cost, muted: !!muted };
+    }
+
+    // Buckets for a period: days for a week or month (the whole calendar
+    // month, future days empty — #395), months for a year.
+    function periodBuckets(period, offset) {
+        var now = new Date();
+        var today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        var out = [];
+        if (period === "year") {
+            var year = today.getFullYear() + offset;
+            for (var m = 0; m < 12; m++) {
+                var keys = [];
+                var days = new Date(year, m + 1, 0).getDate();
+                for (var d = 1; d <= days; d++)
+                    keys.push(year + "-" + full.pad(m + 1) + "-" + full.pad(d));
+                var first = new Date(year, m, 1);
+                out.push(full.bucketFor(Qt.locale().monthName(m, Locale.NarrowFormat),
+                                        Qt.locale().monthName(m) + " " + year, keys, first > today));
+            }
+            return out;
+        }
+        var start;
+        var count;
+        if (period === "week") {
+            var monday = new Date(today);
+            monday.setDate(today.getDate() - ((today.getDay() + 6) % 7) + offset * 7);
+            start = monday;
+            count = 7;
+        } else {
+            start = new Date(today.getFullYear(), today.getMonth() + offset, 1);
+            count = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+        }
+        for (var i = 0; i < count; i++) {
+            var day = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+            var label = period === "week" ? Qt.locale().dayName(day.getDay(), Locale.NarrowFormat)
+                                          : String(day.getDate());
+            out.push(full.bucketFor(label, Qt.locale().toString(day, "ddd d MMM"),
+                                    [full.dayKey(day)], day > today));
+        }
+        return out;
+    }
+
+    function periodTitle(period, offset) {
+        var now = new Date();
+        if (period === "year")
+            return String(now.getFullYear() + offset);
+        if (period === "month") {
+            var m = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+            return Qt.locale().monthName(m.getMonth()) + " " + m.getFullYear();
+        }
+        var monday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7) + offset * 7);
+        var sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+        return Qt.locale().toString(monday, "d MMM") + " – "
+               + Qt.locale().toString(sunday, "d MMM yyyy");
+    }
+
+    // Totals, active days, busiest bucket and per-provider shares.
+    function summarize(buckets) {
+        var total = 0, cost = 0, active = 0, elapsed = 0, best = null;
+        var by = {};
+        for (var i = 0; i < buckets.length; i++) {
+            var b = buckets[i];
+            total += b.total;
+            cost += b.cost;
+            if (b.total > 0)
+                active++;
+            if (!b.muted)
+                elapsed++;
+            if (!best || b.total > best.total)
+                best = b;
+            for (var j = 0; j < b.segments.length; j++) {
+                var s = b.segments[j];
+                if (!by[s.id])
+                    by[s.id] = { id: s.id, tokens: 0, cost: 0 };
+                by[s.id].tokens += s.tokens;
+                by[s.id].cost += s.cost;
+            }
+        }
+        var providers = Object.keys(by).map(function (k) { return by[k]; });
+        providers.sort(function (a, b) { return full.seriesOrder(a.id) - full.seriesOrder(b.id); });
+        return { total: total, cost: cost, active: active, elapsed: elapsed,
+                 best: best && best.total > 0 ? best : null, providers: providers };
+    }
+
+    readonly property var recapBuckets: full.periodBuckets(full.recapPeriod, full.recapOffset)
+    readonly property var recapSummary: full.summarize(full.recapBuckets)
+    readonly property var monthTrend: full.periodBuckets("month", 0)
+    // Earliest recorded day bounds how far back the recap can go.
+    readonly property string firstDay: {
+        var keys = Object.keys(full.usageHistory);
+        return keys.length ? keys.sort()[0] : "";
+    }
+    // Last day (yyyy-mm-dd) of the period `offset` steps from now.
+    function periodEndKey(period, offset) {
+        var now = new Date();
+        var end;
+        if (period === "year")
+            end = new Date(now.getFullYear() + offset, 11, 31);
+        else if (period === "month")
+            end = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+        else {
+            end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            end.setDate(end.getDate() - ((end.getDay() + 6) % 7) + offset * 7 + 6);
+        }
+        return full.dayKey(end);
+    }
+    // Back stops at the first period that still holds recorded history.
+    readonly property bool recapCanGoBack: full.firstDay !== ""
+        && full.periodEndKey(full.recapPeriod, full.recapOffset - 1) >= full.firstDay
 
     // ---- search, sort and filters (upstream #329) ----
     property string dexSearch: ""
@@ -303,6 +470,7 @@ PlasmaExtras.Representation {
             QQC2.TabButton { text: i18n("Shop") }
             QQC2.TabButton { text: i18n("Bag") }
             QQC2.TabButton { text: i18n("Collection") }
+            QQC2.TabButton { text: i18n("Usage") }
         }
 
         StackLayout {
@@ -622,6 +790,29 @@ PlasmaExtras.Representation {
                         }
 
                         Item { Layout.fillWidth: true }
+                    }
+
+                    // --- this month's daily trend, stacked by provider (#270/#348/#395) ---
+                    UsageChart {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Kirigami.Units.gridUnit * 4
+                        visible: Object.keys(full.usageHistory).length > 0
+                        buckets: full.monthTrend
+                        labelEvery: 5
+                        colorFor: full.providerColor
+                        nameFor: full.providerName
+                        formatTokens: full.compact
+                        formatCost: full.money
+                        surface: full.ctpBase
+                        axisColor: full.ctpSurface1
+                    }
+
+                    QQC2.Button {
+                        Layout.alignment: Qt.AlignRight
+                        visible: Object.keys(full.usageHistory).length > 0
+                        flat: true
+                        text: i18n("Usage recap ›")
+                        onClicked: tabs.currentIndex = 4
                     }
 
                     // --- per-provider breakdown ---
@@ -1131,13 +1322,18 @@ PlasmaExtras.Representation {
                     Item { Layout.fillWidth: true }
                 }
 
-                StackLayout {
+                // A plain Item rather than a StackLayout: StackLayout kept the
+                // Pokédex page at a stale narrow width whenever its implicit
+                // size changed (e.g. opening an entry), so the pages fill this
+                // Item and toggle visibility instead.
+                Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    currentIndex: collectionTabs.currentIndex
 
                     // ---- Pokédex grid ----
                     ColumnLayout {
+                        anchors.fill: parent
+                        visible: collectionTabs.currentIndex === 0
                         spacing: Kirigami.Units.smallSpacing
 
                         PlasmaComponents.Label {
@@ -1151,6 +1347,7 @@ PlasmaExtras.Representation {
                             visible: full.selectedEntry !== null
                             radius: Kirigami.Units.smallSpacing
                             color: full.ctpSurface0
+                            implicitWidth: detailRow.implicitWidth + Kirigami.Units.largeSpacing
                             implicitHeight: detailRow.implicitHeight + Kirigami.Units.largeSpacing
 
                             RowLayout {
@@ -1335,8 +1532,10 @@ PlasmaExtras.Representation {
                                         }
                                         // Both appearances owned: choose which one the panel shows (#345).
                                         QQC2.Button {
+                                            // Unown's shine is per letter, chosen in the letter grid.
                                             visible: full.selectedEntry !== null && full.selectedEntry.has_normal
                                                      && full.selectedEntry.has_shiny
+                                                     && full.selectedEntry.unown_forms === undefined
                                             readonly property bool showingShiny: full.selectedEntry !== null
                                                 && full.selectedEntry.representative_shiny !== false
                                             text: showingShiny ? i18n("Show normal") : i18n("Show shiny ✨")
@@ -1392,6 +1591,8 @@ PlasmaExtras.Representation {
 
                                         PlasmaComponents.Label {
                                             text: "#" + modelData.final_id
+                                                  + (modelData.unown_count !== undefined
+                                                     ? " · " + modelData.unown_count + "/" + modelData.unown_total : "")
                                             // Rarity reads at a glance in the unfiltered view (#343).
                                             color: full.rarityColor(modelData.rarity)
                                             font.pointSize: Kirigami.Theme.smallFont.pointSize
@@ -1454,8 +1655,6 @@ PlasmaExtras.Representation {
                                         text: (modelData.is_shiny ? "✨" : "")
                                               + (modelData.name ? modelData.name
                                                                 : "#" + modelData.final_id)
-                                              + (modelData.unown_count !== undefined
-                                                 ? " " + modelData.unown_count + "/" + modelData.unown_total : "")
                                         elide: Text.ElideRight
                                         // Not permanent yet: buying an egg
                                         // discards the companion and this
@@ -1498,6 +1697,8 @@ PlasmaExtras.Representation {
 
                     // ---- Catch log ----
                     QQC2.ScrollView {
+                        anchors.fill: parent
+                        visible: collectionTabs.currentIndex === 1
                         clip: true
                         contentWidth: availableWidth
 
@@ -1575,7 +1776,15 @@ PlasmaExtras.Representation {
                                         Item { Layout.fillWidth: true }
 
                                         PlasmaComponents.Label {
-                                            text: modelData.nature ? modelData.nature : ""
+                                            text: {
+                                                var parts = [];
+                                                if (modelData.level)
+                                                    parts.push(i18n("Lv. %1", modelData.level)
+                                                               + (modelData.gender ? " " + full.genderSymbol(modelData.gender) : ""));
+                                                if (modelData.nature)
+                                                    parts.push(modelData.nature);
+                                                return parts.join(" · ");
+                                            }
                                             opacity: 0.7
                                         }
                                     }
@@ -1629,6 +1838,156 @@ PlasmaExtras.Representation {
                             Item { Layout.fillHeight: true }
                         }
                     }
+                }
+            }
+
+            // ======================= USAGE (recap) =======================
+            QQC2.ScrollView {
+                clip: true
+                contentWidth: availableWidth
+
+                ColumnLayout {
+                    width: full.width - Kirigami.Units.gridUnit
+                    spacing: Kirigami.Units.smallSpacing
+
+                    // Period controls in one row above the chart.
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Repeater {
+                            model: [{ key: "week", label: i18n("Week") },
+                                    { key: "month", label: i18n("Month") },
+                                    { key: "year", label: i18n("Year") }]
+                            QQC2.Button {
+                                checkable: true
+                                checked: full.recapPeriod === modelData.key
+                                text: modelData.label
+                                onClicked: {
+                                    full.recapPeriod = modelData.key;
+                                    full.recapOffset = 0;
+                                }
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        QQC2.Button {
+                            text: "‹"
+                            enabled: full.recapCanGoBack
+                            Layout.preferredWidth: Kirigami.Units.gridUnit * 2
+                            onClicked: full.recapOffset = full.recapOffset - 1
+                        }
+                        QQC2.Button {
+                            text: "›"
+                            enabled: full.recapOffset < 0
+                            Layout.preferredWidth: Kirigami.Units.gridUnit * 2
+                            onClicked: full.recapOffset = full.recapOffset + 1
+                        }
+                        // Back to the current period in one click (#367).
+                        QQC2.Button {
+                            visible: full.recapOffset !== 0
+                            text: i18n("Now")
+                            onClicked: full.recapOffset = 0
+                        }
+                    }
+
+                    PlasmaExtras.Heading {
+                        level: 4
+                        text: full.periodTitle(full.recapPeriod, full.recapOffset)
+                    }
+
+                    RowLayout {
+                        spacing: Kirigami.Units.largeSpacing
+                        ColumnLayout {
+                            spacing: 0
+                            PlasmaComponents.Label { text: i18n("Tokens"); opacity: 0.6 }
+                            PlasmaExtras.Heading { level: 2; text: full.compact(full.recapSummary.total) }
+                        }
+                        ColumnLayout {
+                            spacing: 0
+                            PlasmaComponents.Label { text: i18n("Cost"); opacity: 0.6 }
+                            PlasmaExtras.Heading { level: 2; text: full.money(full.recapSummary.cost) }
+                        }
+                        ColumnLayout {
+                            spacing: 0
+                            PlasmaComponents.Label {
+                                text: full.recapPeriod === "year" ? i18n("Active months") : i18n("Active days")
+                                opacity: 0.6
+                            }
+                            PlasmaExtras.Heading {
+                                level: 2
+                                // Out of the days (or months) so far, not the whole period.
+                                text: full.recapSummary.active + " / " + full.recapSummary.elapsed
+                            }
+                        }
+                    }
+
+                    PlasmaComponents.Label {
+                        visible: full.recapSummary.best !== null
+                        text: full.recapSummary.best
+                              ? i18n("Busiest: %1 — %2", full.recapSummary.best.tip,
+                                     full.compact(full.recapSummary.best.total))
+                              : ""
+                        opacity: 0.8
+                    }
+
+                    UsageChart {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Kirigami.Units.gridUnit * 8
+                        buckets: full.recapBuckets
+                        labelEvery: full.recapPeriod === "month" ? 5 : 1
+                        colorFor: full.providerColor
+                        nameFor: full.providerName
+                        formatTokens: full.compact
+                        formatCost: full.money
+                        surface: full.ctpBase
+                        axisColor: full.ctpSurface1
+                    }
+
+                    PlasmaComponents.Label {
+                        visible: full.recapSummary.total === 0
+                        text: i18n("No usage recorded in this period.")
+                        opacity: 0.7
+                    }
+
+                    // Legend + per-provider totals: identity is never colour alone.
+                    Repeater {
+                        model: full.recapSummary.providers
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            Rectangle {
+                                width: Kirigami.Units.smallSpacing * 2
+                                height: width
+                                radius: 2
+                                color: full.providerColor(modelData.id)
+                            }
+                            PlasmaComponents.Label { text: full.providerName(modelData.id) }
+                            Item { Layout.fillWidth: true }
+                            PlasmaComponents.Label {
+                                text: full.compact(modelData.tokens)
+                                font.bold: true
+                            }
+                            PlasmaComponents.Label {
+                                text: full.recapSummary.total > 0
+                                      ? Math.round(modelData.tokens * 100 / full.recapSummary.total) + "%" : ""
+                                opacity: 0.6
+                                Layout.preferredWidth: Kirigami.Units.gridUnit * 2
+                                horizontalAlignment: Text.AlignRight
+                            }
+                            PlasmaComponents.Label {
+                                text: full.money(modelData.cost)
+                                opacity: 0.6
+                                Layout.preferredWidth: Kirigami.Units.gridUnit * 3.5
+                                horizontalAlignment: Text.AlignRight
+                            }
+                        }
+                    }
+
+                    Item { Layout.fillHeight: true }
                 }
             }
         }

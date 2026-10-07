@@ -53,4 +53,4 @@ def cost_compact(usd: float) -> str:
 def percent(value: float) -> str:
     """79.96 -> '80%' (not '80.0%'), 88.35 -> '88.3%' (upstream #418)."""
     tenths = f"{value:.1f}"
-    return (tenths[:-2] if tenths.endswith(".0") else tenths) + "%"
+    return tenths.removesuffix(".0") + "%"

@@ -7,7 +7,7 @@ import time
 from datetime import date
 from pathlib import Path
 
-from . import commands, config, state
+from . import commands, config, history, state
 from .companion_store import CompanionStore
 from .burn import BurnTracker
 from .notify import Notifier
@@ -134,20 +134,10 @@ class Daemon:
             if has_history:
                 daily_by_provider[provider.id] = DailyUsage(date=today_str)
 
-        periods: dict = {}
-        for provider in self.providers:
-            fetch_periods = getattr(provider, "fetch_periods", None)
-            if fetch_periods is None:
-                continue
-            try:
-                result = fetch_periods()
-            except Exception as exc:
-                errors.append(f"{provider.id} periods: {exc}")
-                continue
-            for key in ("week", "month"):
-                bucket = periods.setdefault(key, {"tokens": 0, "cost": 0.0})
-                bucket["tokens"] += result[key]["tokens"]
-                bucket["cost"] += result[key]["cost"]
+        # Per-day history for the trend and recap; week/month come from it
+        # so every provider counts, not only those with fetch_periods().
+        usage_history = history.collect(self.providers, errors)
+        periods = history.periods(usage_history, date.fromisoformat(today_str))
 
         limit_status = None
         if self.limits_source is not None:
@@ -254,6 +244,7 @@ class Daemon:
             rarity_counts=self.companion_store.rarity_counts() if self.companion_store else None,
             catch_counts=self.companion_store.catch_rarity_counts() if self.companion_store else None,
             snapshots=self.companion_store.snapshots_payload() if self.companion_store else None,
+            history=history.payload(usage_history),
             periods=periods,
             burn=self.burn.payload() if self.burn is not None else None,
             provider_status=status_payload,

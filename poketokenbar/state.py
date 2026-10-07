@@ -107,6 +107,7 @@ def build(
     provider_status: dict | None = None,
     celebration: dict | None = None,
     snapshots: list | None = None,
+    history: dict | None = None,
 ) -> dict:
     total_tokens = sum(d.total_tokens for d in daily_by_provider.values())
     total_cost = sum(d.total_cost for d in daily_by_provider.values())
@@ -151,6 +152,7 @@ def build(
         "strings": l10n.catalogue(config_values.get("language", "en")),
         "celebration": celebration or {},
         "snapshots": snapshots or [],
+        "history": history or {},
         "burn": burn or {},
         "provider_status": provider_status or {},
         "panel": {

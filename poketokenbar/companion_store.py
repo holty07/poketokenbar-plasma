@@ -340,7 +340,11 @@ class CompanionStore:
         if shiny is not None and looks is not None and shiny not in looks:
             raise ValueError("that appearance is not in your collection")
         letter = balance.resolved_unown_form(species_id or 0, form)
-        if letter is not None and letter not in self.unown_forms():
+        owned_letters = self.unown_forms()
+        if letter is not None and form is None and letter not in owned_letters:
+            # No letter given: show one actually owned rather than A.
+            letter = next((f for f in balance.UNOWN_FORMS if f in owned_letters), letter)
+        if letter is not None and letter not in owned_letters:
             raise ValueError(f"Unown {balance.unown_symbol(letter)} is not in your collection")
         self.state.representative_shiny = shiny if species_id is not None else None
         self.state.representative_id = species_id
