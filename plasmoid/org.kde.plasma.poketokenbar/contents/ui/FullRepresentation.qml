@@ -182,9 +182,11 @@ PlasmaExtras.Representation {
     function compact(n) {
         if (!n)
             return "0";
-        if (n >= 1e9)
+        // Same bands as poketokenbar/format.py: promote at the rounding
+        // boundary so 999,950 reads "1M", not "1000K".
+        if (n >= 999950000)
             return (n / 1e9).toFixed(2).replace(/\.?0+$/, "") + "B";
-        if (n >= 1e6)
+        if (n >= 999950)
             return (n / 1e6).toFixed(1).replace(/\.?0+$/, "") + "M";
         if (n >= 1e3)
             return (n / 1e3).toFixed(1).replace(/\.?0+$/, "") + "K";

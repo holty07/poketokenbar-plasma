@@ -36,3 +36,18 @@ def test_cost_compact_matches_swift_thresholds(usd, expected):
 def test_percent_drops_decimal_when_whole():
     assert fmt.percent(80.0) == "80%"
     assert fmt.percent(80.5) == "80.5%"
+
+
+def test_compact_promotes_at_the_rounding_boundary():
+    # upstream #365
+    assert fmt.compact(999_949) == "999.9K"
+    assert fmt.compact(999_950) == "1M"
+    assert fmt.compact(999_950_000) == "1B"
+
+
+def test_cost_and_percent_pick_precision_from_the_rounded_value():
+    # upstream #418
+    assert fmt.cost_compact(99.96) == "$100"
+    assert fmt.cost_compact(99.94) == "$99.9"
+    assert fmt.percent(79.96) == "80%"
+    assert fmt.percent(88.35) == "88.3%"  # 88.35 is 88.3499... in binary
