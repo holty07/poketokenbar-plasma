@@ -1,4 +1,5 @@
 from .antigravity import AntigravityProvider
+from .aside import AsideProvider
 from .base import UsageProvider
 from .claude import ClaudeProvider
 from .codex import CodexProvider
@@ -20,11 +21,13 @@ PROVIDERS: list[UsageProvider] = [
     KimiCodeProvider(),
     PiProvider(),
     OmpProvider(),
+    AsideProvider(),
 ]
 
 __all__ = [
     "PROVIDERS",
     "AntigravityProvider",
+    "AsideProvider",
     "ClaudeProvider",
     "CodexProvider",
     "HermesProvider",
