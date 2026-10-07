@@ -5,6 +5,7 @@ from .codex import CodexProvider
 from .hermes import HermesProvider
 from .kimi_code import KimiCodeProvider
 from .opencode import OpencodeProvider
+from .pi import PiProvider
 
 # Registry. Adding a source means adding an implementation and an entry here —
 # never a branch on a provider id in shared code.
@@ -16,6 +17,7 @@ PROVIDERS: list[UsageProvider] = [
     OpencodeProvider(),
     HermesProvider(),
     KimiCodeProvider(),
+    PiProvider(),
 ]
 
 __all__ = [
@@ -26,5 +28,6 @@ __all__ = [
     "HermesProvider",
     "KimiCodeProvider",
     "OpencodeProvider",
+    "PiProvider",
     "UsageProvider",
 ]

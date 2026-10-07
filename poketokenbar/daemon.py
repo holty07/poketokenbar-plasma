@@ -246,6 +246,7 @@ def main() -> int:
     from .providers.hermes import HermesProvider
     from .providers.kimi_code import KimiCodeProvider
     from .providers.opencode import OpencodeProvider
+    from .providers.pi import PiProvider
 
     cache_base = os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")
     cache = ScanCache(Path(cache_base) / "poketokenbar" / "scan.db")
@@ -260,6 +261,7 @@ def main() -> int:
             OpencodeProvider(cache=cache),
             HermesProvider(cache=cache),
             KimiCodeProvider(cache=cache),
+            PiProvider(cache=cache),
         ],
         # Official Claude usage limits are disabled for now — this desktop
         # widget no longer needs to fetch or show them. Pass LimitsSource()
