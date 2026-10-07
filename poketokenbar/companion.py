@@ -141,6 +141,9 @@ class CompanionState:
     # Species pinned as the panel/pet representative (#158). None = current.
     representative_id: int | None = None
     representative_unown_form: str | None = None
+    # Which appearance to show when both are owned (#345). None = shiny if
+    # owned shiny (the old behaviour).
+    representative_shiny: bool | None = None
 
     @property
     def spendable_tokens(self) -> int:

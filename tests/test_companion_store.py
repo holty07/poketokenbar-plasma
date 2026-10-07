@@ -186,3 +186,35 @@ def test_catch_log_marks_released_entries(tmp_path):
     s.state.used_since_install = balance.FRESH_EGG_PRICE
     s.buy("egg")
     assert s.catch_log_payload()[0]["released"] is True
+
+
+def test_only_the_current_stage_is_marked_raising(tmp_path):
+    s = _hatched(tmp_path)
+    s.state.active.stage_index = 1
+    rows = {r["species_id"]: r for r in s.dex_payload()}
+    assert rows[2]["is_raising"] is True
+    assert rows[1]["is_raising"] is False
+
+
+def test_representative_appearance_can_be_chosen_when_both_are_owned(tmp_path):
+    import pytest
+
+    from poketokenbar.companion import DexEntry
+
+    s = _hatched(tmp_path)
+    s.state.dex.append(DexEntry(base_id=1, final_id=1, chain_order=[1], rarity=Rarity.COMMON,
+                                is_shiny=True))
+    row = next(r for r in s.dex_payload() if r["species_id"] == 1)
+    assert row["has_normal"] and row["has_shiny"]
+    s.set_representative(1, shiny=False)
+    assert s.state.representative_shiny is False
+    with pytest.raises(ValueError):
+        s.set_representative(2, shiny=True)  # never owned shiny
+    assert s.state.representative_id == 1  # the rejected pin changed nothing
+
+
+def test_shop_lists_eggs_as_locked_while_incubating(tmp_path):
+    s = _store(tmp_path)
+    s.state.used_since_install = balance.FRESH_EGG_PRICE * 5
+    egg = next(r for r in s.shop_payload() if r["key"] == "egg")
+    assert egg["locked"] is True and egg["affordable"] is False

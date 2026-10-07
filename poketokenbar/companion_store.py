@@ -311,28 +311,38 @@ class CompanionStore:
 
     # --- representative (#158) ---------------------------------------------
 
-    def owned_species(self) -> dict[int, bool]:
-        """Species the player owns -> whether they own it shiny. Graduated and
-        released chains plus the companion's reached forms; a disguised
-        Ditto's shine stays hidden."""
-        owned: dict[int, bool] = {}
+    def owned_appearances(self) -> dict[int, set[bool]]:
+        """Species owned -> the appearances owned ({False} normal, {True}
+        shiny, or both). Graduated and released chains plus the companion's
+        reached forms; a disguised Ditto's shine stays hidden."""
+        owned: dict[int, set[bool]] = {}
         for entry in self.state.dex:
             for species_id in entry.chain_order:
-                owned[species_id] = owned.get(species_id, False) or entry.is_shiny
+                owned.setdefault(species_id, set()).add(entry.is_shiny)
         mon = self.state.active
         if mon is not None:
             for species_id in mon.path_ids[: mon.stage_index + 1]:
-                owned[species_id] = owned.get(species_id, False) or mon.shows_shiny
+                owned.setdefault(species_id, set()).add(mon.shows_shiny)
         return owned
 
-    def set_representative(self, species_id: int | None, form: str | None = None) -> str:
-        """Pin a species (and, for Unown, a letter) for the panel and floating
-        pet; None un-pins."""
-        if species_id is not None and species_id not in self.owned_species():
+    def owned_species(self) -> dict[int, bool]:
+        """Species owned -> whether owned shiny."""
+        return {sid: True in looks for sid, looks in self.owned_appearances().items()}
+
+    def set_representative(
+        self, species_id: int | None, form: str | None = None, shiny: bool | None = None
+    ) -> str:
+        """Pin a species (and, for Unown, a letter; and optionally which
+        appearance) for the panel and floating pet; None un-pins."""
+        looks = self.owned_appearances().get(species_id) if species_id is not None else None
+        if species_id is not None and not looks:
             raise ValueError(f"species {species_id} is not in your collection")
+        if shiny is not None and looks is not None and shiny not in looks:
+            raise ValueError("that appearance is not in your collection")
         letter = balance.resolved_unown_form(species_id or 0, form)
         if letter is not None and letter not in self.unown_forms():
             raise ValueError(f"Unown {balance.unown_symbol(letter)} is not in your collection")
+        self.state.representative_shiny = shiny if species_id is not None else None
         self.state.representative_id = species_id
         self.state.representative_unown_form = letter
         self._persist()
@@ -353,7 +363,10 @@ class CompanionStore:
             if letter not in forms:
                 return ""
             return self._sprite(rep, forms[letter], animated=True, form=letter)
-        return self._sprite(rep, owned[rep], animated=True)
+        looks = self.owned_appearances()[rep]
+        chosen = self.state.representative_shiny
+        shiny = chosen if chosen in looks else owned[rep]
+        return self._sprite(rep, shiny, animated=True)
 
     # --- difficulty (#244) -------------------------------------------------
 
@@ -494,8 +507,11 @@ class CompanionStore:
                               "shinyCharm": "\N{SPARKLES}"}.get(e.key, "\N{EGG}"),
                     "owned": e.owned,
                     "owned_count": self.state.inventory.get(e.key, 0),
-                    "affordable": spendable >= e.price and not e.owned,
+                    "affordable": spendable >= e.price and not e.owned
+                    and not (e.kind == "egg" and self.state.active is None),
                     "stackable": e.key in shop.STACKABLE,
+                    # Eggs stay listed while incubating, but can't be bought (#261).
+                    "locked": e.kind == "egg" and self.state.active is None,
                     "max_count": shop.max_buy_count(self.state, e.key),
                 }
             )
@@ -568,6 +584,7 @@ class CompanionStore:
 
         out = []
         unown_owned = self.unown_forms()
+        appearances = self.owned_appearances()
         for species_id in sorted(acc):
             slot = acc[species_id]
             sprite = self._sprite(species_id, slot["is_shiny"])
@@ -610,7 +627,14 @@ class CompanionStore:
                     "name": self.species_name(species_id, self.state.language),
                     "rarity": slot["rarity"],
                     "is_shiny": slot["is_shiny"],
-                    "is_raising": not slot["graduated"],
+                    # Only the current stage is "raising" (#211): earlier
+                    # stages are kept even if the companion is released.
+                    "is_raising": not slot["graduated"]
+                    and mon is not None and species_id == mon.current_id,
+                    "has_normal": False in appearances.get(species_id, set()),
+                    "has_shiny": True in appearances.get(species_id, set()),
+                    "representative_shiny": self.state.representative_shiny
+                    if species_id == self.state.representative_id else None,
                     "is_representative": species_id == self.state.representative_id,
                     "profile": self.profile_payload(*self._profile_args(species_id)),
                     "sprite_path": sprite,

@@ -87,3 +87,13 @@ def test_ctl_set_accepts_a_fractional_difficulty(tmp_path, monkeypatch):
     assert ctl.main(["set", "growth_difficulty", "0.5"]) == 0
     assert json.loads(cfg.read_text(encoding="utf-8"))["growth_difficulty"] == 0.5
     assert ctl.main(["set", "growth_difficulty", "nan"]) != 0
+
+
+def test_ctl_pin_appearance_flags(tmp_path, monkeypatch):
+    monkeypatch.setattr(commands, "spool_dir", lambda: tmp_path)
+    assert ctl.main(["pin", "25", "--shiny"]) == 0
+    assert ctl.main(["pin", "201", "b", "--normal"]) == 0
+    assert ctl.main(["pin", "none", "--shiny"]) != 0
+    got = [c["args"] for c in commands.drain(spool=tmp_path)]
+    assert got == [{"species_id": 25, "shiny": True},
+                   {"species_id": 201, "form": "b", "shiny": False}]

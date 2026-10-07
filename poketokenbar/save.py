@@ -185,6 +185,8 @@ def decode(raw: dict) -> CompanionState:
         )
     rep = raw.get("representative_id")
     state.representative_id = rep if isinstance(rep, int) and not isinstance(rep, bool) else None
+    rep_shiny = raw.get("representative_shiny")
+    state.representative_shiny = rep_shiny if isinstance(rep_shiny, bool) else None
     state.representative_unown_form = (
         balance.resolved_unown_form(state.representative_id, raw.get("representative_unown_form"))
         if state.representative_id is not None
@@ -251,6 +253,7 @@ def encode(state: CompanionState) -> dict:
         "shop_difficulty": state.shop_difficulty,
         "representative_id": state.representative_id,
         "representative_unown_form": state.representative_unown_form,
+        "representative_shiny": state.representative_shiny,
     }
 
 

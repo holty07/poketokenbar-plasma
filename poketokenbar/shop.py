@@ -85,6 +85,8 @@ def max_buy_count(state: CompanionState, key: str) -> int:
     if entry is None or entry.price <= 0:
         return 0
     if key not in STACKABLE:
+        if entry.kind == "egg" and state.active is None:
+            return 0
         return 0 if entry.owned or state.spendable_tokens < entry.price else 1
     return state.spendable_tokens // entry.price
 
@@ -111,6 +113,11 @@ def buy(state: CompanionState, key: str, count: int = 1, confirm: bool = False) 
         state.inventory[entry.key] = state.inventory.get(entry.key, 0) + count
         return f"bought {entry.label}" + (f" ×{count}" if count > 1 else "")
 
+    if state.active is None:
+        # An egg means "release the current Pokémon and reroll" (#261).
+        # While incubating there is nothing to release, and buying one would
+        # throw away the egg's progress.
+        raise ShopError("an egg is already incubating")
     if is_high_value(state) and not confirm:
         raise ShopError("this would release a legendary or shiny Pokémon; confirm to proceed")
 

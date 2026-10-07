@@ -258,3 +258,14 @@ def test_candy_grant_rearms_on_a_new_window_epoch():
     # Still 100% but never seen dipping: a new resets_at is a new window.
     assert shop.grant_candy(s, {"session": 100}, {"session": "t1"}) == 0
     assert shop.grant_candy(s, {"session": 100}, {"session": "t2"}) == 1
+
+
+def test_eggs_cannot_be_bought_while_incubating():
+    # #261: there is nothing to release, and the egg's progress would be lost.
+    s = CompanionState()
+    s.used_since_install = balance.FRESH_EGG_PRICE * 2
+    s.egg_usage = 1_000
+    with pytest.raises(shop.ShopError):
+        shop.buy(s, "egg")
+    assert s.egg_usage == 1_000 and s.spent_tokens == 0
+    assert shop.max_buy_count(s, "egg") == 0

@@ -84,10 +84,12 @@ class Daemon:
                 args = command.get("args") or {}
                 species = args.get("species_id")
                 form = args.get("form")
+                shiny = args.get("shiny")
                 try:
                     self.companion_store.set_representative(
                         species if isinstance(species, int) else None,
                         form if isinstance(form, str) else None,
+                        shiny if isinstance(shiny, bool) else None,
                     )
                 except ValueError as exc:
                     errors.append(f"pin: {exc}")

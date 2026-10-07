@@ -11,7 +11,8 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if not argv:
         print("usage: poketokenctl {set <key> <value>|refresh|buy <key> [count] [--confirm]|"
-              "use <key> [count]|pin <species-id [unown-letter]|none>|snapshot|restore <id>|"
+              "use <key> [count]|pin <species-id [unown-letter] [--shiny|--normal]|none>|"
+              "snapshot|restore <id>|"
               "export <path>|import <path>}",
               file=sys.stderr)
         return 2
@@ -75,7 +76,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if action == "pin":
-        if not 1 <= len(rest) <= 2 or (rest[0] == "none" and len(rest) == 2):
+        shiny = True if "--shiny" in rest else (False if "--normal" in rest else None)
+        rest = [r for r in rest if r not in ("--shiny", "--normal")]
+        if not 1 <= len(rest) <= 2 or (rest[0] == "none" and (len(rest) == 2 or shiny is not None)):
             print("usage: poketokenctl pin <species-id [unown-letter]|none>", file=sys.stderr)
             return 2
         if rest[0] == "none":
@@ -89,6 +92,8 @@ def main(argv: list[str] | None = None) -> int:
         args = {"species_id": species}
         if len(rest) == 2:
             args["form"] = rest[1]
+        if shiny is not None:
+            args["shiny"] = shiny
         commands.enqueue("pin", args)
         return 0
 
