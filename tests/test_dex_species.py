@@ -15,7 +15,7 @@ class FakeAPI:
     def __init__(self, forms=3, rarity=Rarity.COMMON):
         self.forms, self.rarity = forms, rarity
 
-    def roll_base_species(self, rng, tier=None):
+    def roll_base_species(self, rng, tier=None, collected_bases=None):
         return 1
 
     def line(self, base_id):

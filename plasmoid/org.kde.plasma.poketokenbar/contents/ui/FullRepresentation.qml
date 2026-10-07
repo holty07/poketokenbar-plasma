@@ -1127,6 +1127,51 @@ PlasmaExtras.Representation {
                                         }
                                     }
 
+                                    // ---- Unown letters (#288): owned ones pin, the rest are dimmed ----
+                                    GridLayout {
+                                        visible: full.selectedEntry !== null
+                                                 && full.selectedEntry.unown_forms !== undefined
+                                        columns: 7
+                                        columnSpacing: 2
+                                        rowSpacing: 2
+
+                                        Repeater {
+                                            model: full.selectedEntry && full.selectedEntry.unown_forms
+                                                   ? full.selectedEntry.unown_forms : []
+
+                                            Rectangle {
+                                                implicitWidth: Kirigami.Units.gridUnit * 1.6
+                                                implicitHeight: Kirigami.Units.gridUnit * 1.6
+                                                radius: 3
+                                                color: modelData.is_representative ? full.ctpMauve : "transparent"
+                                                border.color: full.ctpSurface1
+                                                opacity: modelData.collected ? 1.0 : 0.3
+
+                                                Image {
+                                                    anchors.fill: parent
+                                                    source: modelData.sprite_path
+                                                            ? "file://" + modelData.sprite_path : ""
+                                                    visible: modelData.sprite_path !== ""
+                                                    smooth: false
+                                                    fillMode: Image.PreserveAspectFit
+                                                }
+                                                PlasmaComponents.Label {
+                                                    anchors.centerIn: parent
+                                                    visible: modelData.sprite_path === ""
+                                                    text: modelData.symbol
+                                                }
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    enabled: modelData.collected
+                                                    cursorShape: modelData.collected ? Qt.PointingHandCursor
+                                                                                     : Qt.ArrowCursor
+                                                    onClicked: runner.run("poketokenctl pin "
+                                                        + full.selectedEntry.species_id + " " + modelData.form)
+                                                }
+                                            }
+                                        }
+                                    }
+
                                     PlasmaComponents.Label {
                                         visible: full.selectedProfile !== null && full.selectedProfile.moves.length > 0
                                         text: full.selectedProfile ? i18n("Moves: %1", full.selectedProfile.moves.join(", ")) : ""
@@ -1234,6 +1279,8 @@ PlasmaExtras.Representation {
                                         text: (modelData.is_shiny ? "✨" : "")
                                               + (modelData.name ? modelData.name
                                                                 : "#" + modelData.final_id)
+                                              + (modelData.unown_count !== undefined
+                                                 ? " " + modelData.unown_count + "/" + modelData.unown_total : "")
                                         elide: Text.ElideRight
                                         // Not permanent yet: buying an egg
                                         // discards the companion and this

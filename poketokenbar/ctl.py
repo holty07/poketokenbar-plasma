@@ -11,7 +11,7 @@ def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if not argv:
         print("usage: poketokenctl {set <key> <value>|refresh|buy <key> [count] [--confirm]|"
-              "use <key> [count]|pin <species-id|none>|snapshot|restore <id>|"
+              "use <key> [count]|pin <species-id [unown-letter]|none>|snapshot|restore <id>|"
               "export <path>|import <path>}",
               file=sys.stderr)
         return 2
@@ -75,8 +75,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if action == "pin":
-        if len(rest) != 1:
-            print("usage: poketokenctl pin <species-id|none>", file=sys.stderr)
+        if not 1 <= len(rest) <= 2 or (rest[0] == "none" and len(rest) == 2):
+            print("usage: poketokenctl pin <species-id [unown-letter]|none>", file=sys.stderr)
             return 2
         if rest[0] == "none":
             species = None
@@ -86,7 +86,10 @@ def main(argv: list[str] | None = None) -> int:
             except ValueError:
                 print(f"species id must be a number or 'none', got {rest[0]!r}", file=sys.stderr)
                 return 2
-        commands.enqueue("pin", {"species_id": species})
+        args = {"species_id": species}
+        if len(rest) == 2:
+            args["form"] = rest[1]
+        commands.enqueue("pin", args)
         return 0
 
     print(f"unknown command: {action}", file=sys.stderr)

@@ -223,12 +223,19 @@ class PokeAPI:
 
     # --- rolling -----------------------------------------------------------
 
-    def roll_base_species(self, rng, tier: Rarity | None = None) -> int:
+    def roll_base_species(
+        self, rng, tier: Rarity | None = None, collected_bases: set[int] | None = None
+    ) -> int:
         """Capture-rate-weighted pick, so commons are common.
 
         capture_rate runs 3 (legendary-ish) to 255 (Caterpie). Using it directly
-        as the weight reproduces the official rarity curve.
+        as the weight reproduces the official rarity curve. Lines already
+        graduated weigh half (upstream chooseBase / CollectionWeight), nudging
+        toward new species without ruling repeats out.
         """
+        from .balance import collection_weight
+
+        collected_bases = collected_bases or set()
         candidates = self.base_species_index()
         if tier is not None:
             ceiling = tier.capture_rate_ceiling
@@ -236,7 +243,9 @@ class PokeAPI:
                 candidates = [c for c in candidates if c.capture_rate <= ceiling]
         if not candidates:
             raise PokeAPIError("no hatch candidates")
-        weights = [c.capture_rate for c in candidates]
+        weights = [
+            collection_weight(c.capture_rate, c.id in collected_bases) for c in candidates
+        ]
         return rng.choices(candidates, weights=weights, k=1)[0].id
 
 

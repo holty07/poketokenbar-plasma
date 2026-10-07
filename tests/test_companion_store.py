@@ -11,7 +11,7 @@ class FakeAPI:
         self.forms, self.rarity, self.broken = forms, rarity, broken
         self.rolls = 0
 
-    def roll_base_species(self, rng, tier=None):
+    def roll_base_species(self, rng, tier=None, collected_bases=None):
         if self.broken:
             from poketokenbar.pokeapi import PokeAPIError
 

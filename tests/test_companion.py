@@ -62,7 +62,12 @@ def test_hatching_consumes_a_premium_egg_guarantee():
 
 def _hatched(forms=3, rarity=Rarity.COMMON):
     s = _state()
-    apply_usage(s, balance.EGG_HATCH_THRESHOLD, line_for_egg=_line(forms, rarity))
+    # Seeded: unseeded, 1 run in 128 hatched a disguised Ditto and the
+    # chain assertions failed at random.
+    apply_usage(
+        s, balance.EGG_HATCH_THRESHOLD, line_for_egg=_line(forms, rarity), rng=random.Random(0)
+    )
+    assert s.active.ditto_disguise is None
     return s
 
 

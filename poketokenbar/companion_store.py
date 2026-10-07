@@ -237,7 +237,11 @@ class CompanionStore:
         try:
             species_id = self.state.pending_hatch_id
             if species_id is None:
-                species_id = self.api.roll_base_species(self.rng, self.state.egg_tier)
+                collected = {int(k.split("-")[0]) for k in self.state.collected_finals
+                             if k.split("-")[0].isdigit()}
+                species_id = self.api.roll_base_species(
+                    self.rng, self.state.egg_tier, collected_bases=collected
+                )
             return self.api.line(species_id)
         except pokeapi.PokeAPIError:
             return None  # hold progress in the egg; hatch on a later poll
@@ -267,12 +271,43 @@ class CompanionStore:
                 return names[code]
         return names.get("en", "")
 
+    def display_name(self, species_id: int, form: str | None = None) -> str:
+        """Species name, with Unown's letter appended ("Unown [B]")."""
+        name = self.species_name(species_id, self.state.language)
+        letter = balance.resolved_unown_form(species_id, form)
+        if letter is None:
+            return name
+        return f"{name or '#' + str(species_id)} [{balance.unown_symbol(letter)}]"
+
+    def _sprite(self, species_id: int, shiny: bool, animated: bool = False,
+                form: str | None = None) -> str:
+        if self.sprites is None:
+            return ""
+        path = self.sprites.path(
+            species_id, animated=animated, shiny=shiny,
+            form=balance.resolved_unown_form(species_id, form),
+        )
+        return str(path) if path else ""
+
     def sprite_path(self) -> str:
         mon = self.state.active
-        if mon is None or self.sprites is None:
+        if mon is None:
             return ""
-        path = self.sprites.path(mon.current_id, animated=True, shiny=mon.shows_shiny)
-        return str(path) if path else ""
+        return self._sprite(mon.current_id, mon.shows_shiny, animated=True, form=mon.unown_form)
+
+    def unown_forms(self) -> dict[str, bool]:
+        """Owned Unown letters -> whether owned shiny (per letter)."""
+        owned: dict[str, bool] = {}
+        unown = balance.UNOWN_SPECIES_ID
+        for entry in self.state.dex:
+            if unown in entry.chain_order:
+                letter = balance.resolved_unown_form(unown, entry.unown_form)
+                owned[letter] = owned.get(letter, False) or entry.is_shiny
+        mon = self.state.active
+        if mon is not None and unown in mon.path_ids[: mon.stage_index + 1]:
+            letter = balance.resolved_unown_form(unown, mon.unown_form)
+            owned[letter] = owned.get(letter, False) or mon.shows_shiny
+        return owned
 
     # --- representative (#158) ---------------------------------------------
 
@@ -290,11 +325,16 @@ class CompanionStore:
                 owned[species_id] = owned.get(species_id, False) or mon.shows_shiny
         return owned
 
-    def set_representative(self, species_id: int | None) -> str:
-        """Pin a species for the panel and floating pet; None un-pins."""
+    def set_representative(self, species_id: int | None, form: str | None = None) -> str:
+        """Pin a species (and, for Unown, a letter) for the panel and floating
+        pet; None un-pins."""
         if species_id is not None and species_id not in self.owned_species():
             raise ValueError(f"species {species_id} is not in your collection")
+        letter = balance.resolved_unown_form(species_id or 0, form)
+        if letter is not None and letter not in self.unown_forms():
+            raise ValueError(f"Unown {balance.unown_symbol(letter)} is not in your collection")
         self.state.representative_id = species_id
+        self.state.representative_unown_form = letter
         self._persist()
         return "representative cleared" if species_id is None else "representative pinned"
 
@@ -307,8 +347,13 @@ class CompanionStore:
         owned = self.owned_species()
         if rep not in owned:
             return ""
-        path = self.sprites.path(rep, animated=True, shiny=owned[rep])
-        return str(path) if path else ""
+        letter = balance.resolved_unown_form(rep, self.state.representative_unown_form)
+        if letter is not None:
+            forms = self.unown_forms()
+            if letter not in forms:
+                return ""
+            return self._sprite(rep, forms[letter], animated=True, form=letter)
+        return self._sprite(rep, owned[rep], animated=True)
 
     # --- difficulty (#244) -------------------------------------------------
 
@@ -357,12 +402,12 @@ class CompanionStore:
         evo_line = []
         if self.sprites is not None:
             for index, species_id in enumerate(mon.path_ids):
-                path = self.sprites.path(species_id, animated=False, shiny=mon.shows_shiny)
                 evo_line.append(
                     {
                         "species_id": species_id,
-                        "name": self.species_name(species_id, self.state.language),
-                        "sprite_path": str(path) if path else "",
+                        "name": self.display_name(species_id, mon.unown_form),
+                        "sprite_path": self._sprite(species_id, mon.shows_shiny,
+                                                    form=mon.unown_form),
                         "current": index == mon.stage_index,
                         "reached": index <= mon.stage_index,
                     }
@@ -371,7 +416,7 @@ class CompanionStore:
             "stage": "mon",
             "label": "",
             "species_id": mon.current_id,
-            "name": self.species_name(mon.current_id, self.state.language),
+            "name": self.display_name(mon.current_id, mon.unown_form),
             "is_final_form": mon.is_final_form,
             "remaining_tokens": remaining,
             "remaining_text": _compact(remaining),
@@ -522,16 +567,44 @@ class CompanionStore:
                     slot["is_shiny"] = True
 
         out = []
+        unown_owned = self.unown_forms()
         for species_id in sorted(acc):
             slot = acc[species_id]
-            sprite = ""
-            if self.sprites is not None:
-                path = self.sprites.path(
-                    species_id, animated=False, shiny=slot["is_shiny"]
+            sprite = self._sprite(species_id, slot["is_shiny"])
+            unown = {}
+            if species_id == balance.UNOWN_SPECIES_ID:
+                # One cell for all 28 letters, counted n/28 (#288). It shows
+                # the pinned letter, else the first one owned.
+                pinned = (
+                    self.state.representative_unown_form
+                    if self.state.representative_id == species_id else None
                 )
-                sprite = str(path) if path else ""
+                shown = pinned or next(
+                    (f for f in balance.UNOWN_FORMS if f in unown_owned), "a"
+                )
+                sprite = self._sprite(species_id, unown_owned.get(shown, False), form=shown)
+                unown = {
+                    "unown_count": len(unown_owned),
+                    "unown_total": len(balance.UNOWN_FORMS),
+                    "unown_forms": [
+                        {
+                            "form": form,
+                            "symbol": balance.unown_symbol(form),
+                            "collected": form in unown_owned,
+                            "is_shiny": unown_owned.get(form, False),
+                            "is_representative": form == pinned,
+                            # Only owned letters are fetched; the rest render
+                            # as dimmed symbols.
+                            "sprite_path": self._sprite(
+                                species_id, unown_owned[form], form=form
+                            ) if form in unown_owned else "",
+                        }
+                        for form in balance.UNOWN_FORMS
+                    ],
+                }
             out.append(
                 {
+                    **unown,
                     "final_id": species_id,
                     "species_id": species_id,
                     "name": self.species_name(species_id, self.state.language),
@@ -549,21 +622,15 @@ class CompanionStore:
         prof, nature = self._individual_for(species_id)
         return prof, species_id, nature
 
-    def _chain(self, species_ids, shiny: bool) -> list[dict]:
-        out = []
-        for species_id in species_ids:
-            sprite = ""
-            if self.sprites is not None:
-                path = self.sprites.path(species_id, animated=False, shiny=shiny)
-                sprite = str(path) if path else ""
-            out.append(
-                {
-                    "species_id": species_id,
-                    "name": self.species_name(species_id, self.state.language),
-                    "sprite_path": sprite,
-                }
-            )
-        return out
+    def _chain(self, species_ids, shiny: bool, form: str | None = None) -> list[dict]:
+        return [
+            {
+                "species_id": species_id,
+                "name": self.display_name(species_id, form),
+                "sprite_path": self._sprite(species_id, shiny, form=form),
+            }
+            for species_id in species_ids
+        ]
 
     def catch_log_payload(self) -> list[dict]:
         """Every catch, newest first, with its full evolution chain.
@@ -576,7 +643,7 @@ class CompanionStore:
                 "rarity": str(e.rarity),
                 "nature": e.nature,
                 "is_shiny": e.is_shiny,
-                "chain": self._chain(e.chain_order, e.is_shiny),
+                "chain": self._chain(e.chain_order, e.is_shiny, e.unown_form),
                 "caught_at": e.caught_at,
                 "raised_text": _duration(e.raised_seconds),
                 "raising": False,
@@ -597,7 +664,9 @@ class CompanionStore:
                     "rarity": str(mon.rarity),
                     "nature": mon.nature,
                     "is_shiny": mon.shows_shiny,
-                    "chain": self._chain(mon.path_ids[: mon.stage_index + 1], mon.shows_shiny),
+                    "chain": self._chain(
+                        mon.path_ids[: mon.stage_index + 1], mon.shows_shiny, mon.unown_form
+                    ),
                     "caught_at": mon.hatched_at,
                     "raised_text": "",
                     "raising": True,

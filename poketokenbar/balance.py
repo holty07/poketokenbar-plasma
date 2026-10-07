@@ -147,6 +147,29 @@ DITTO_DISGUISE_DENOMINATOR = 128
 DITTO_SPECIES_ID = 132
 
 
+# Unown (#201) has 28 collectible letter forms (upstream #288).
+UNOWN_SPECIES_ID = 201
+UNOWN_FORMS = [chr(c) for c in range(ord("a"), ord("z") + 1)] + ["exclamation", "question"]
+
+
+def unown_symbol(form: str) -> str:
+    return {"exclamation": "!", "question": "?"}.get(form, form.upper())
+
+
+def resolved_unown_form(species_id: int, form: str | None) -> str | None:
+    """The letter a species shows: None for anything but Unown, and A for
+    an Unown recorded before letters existed (its old appearance)."""
+    if species_id != UNOWN_SPECIES_ID:
+        return None
+    return form if form in UNOWN_FORMS else "a"
+
+
+def collection_weight(weight: int, collected: bool) -> int:
+    """Halve what you already have, never to zero (upstream CollectionWeight):
+    a nudge toward new things that still leaves repeats and shiny hunts open."""
+    return max(1, weight // 2) if collected else max(1, weight)
+
+
 def shiny_denominator(has_charm: bool) -> int:
     """Single source for the roll and the odds quoted in notifications (#351)."""
     return SHINY_CHARM_DENOMINATOR if has_charm else SHINY_DENOMINATOR

@@ -81,10 +81,13 @@ class Daemon:
                 except Exception as exc:
                     errors.append(f"{name}: {exc}")
             elif name == "pin" and self.companion_store is not None:
-                species = (command.get("args") or {}).get("species_id")
+                args = command.get("args") or {}
+                species = args.get("species_id")
+                form = args.get("form")
                 try:
                     self.companion_store.set_representative(
-                        species if isinstance(species, int) else None
+                        species if isinstance(species, int) else None,
+                        form if isinstance(form, str) else None,
                     )
                 except ValueError as exc:
                     errors.append(f"pin: {exc}")

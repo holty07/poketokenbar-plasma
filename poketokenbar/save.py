@@ -106,6 +106,9 @@ def _decode_mon(raw) -> MonState | None:
         ditto_revealed=_lenient(raw, "ditto_revealed", bool, False),
         hatched_at=raw.get("hatched_at") if isinstance(raw.get("hatched_at"), (int, float)) else None,
         profile=_profile.decode(raw.get("profile")),
+        unown_form=balance.resolved_unown_form(
+            _lenient(raw, "base_id", int, path_ids[0]), raw.get("unown_form")
+        ),
     )
 
 
@@ -132,6 +135,7 @@ def _decode_dex_entry(raw) -> DexEntry | None:
         else None,
         released_at=_float(raw, "released_at"),
         profile=_profile.decode(raw.get("profile")),
+        unown_form=balance.resolved_unown_form(base_id, raw.get("unown_form")),
     )
 
 
@@ -181,6 +185,11 @@ def decode(raw: dict) -> CompanionState:
         )
     rep = raw.get("representative_id")
     state.representative_id = rep if isinstance(rep, int) and not isinstance(rep, bool) else None
+    state.representative_unown_form = (
+        balance.resolved_unown_form(state.representative_id, raw.get("representative_unown_form"))
+        if state.representative_id is not None
+        else None
+    )
     return state
 
 
@@ -203,6 +212,7 @@ def encode(state: CompanionState) -> dict:
             "ditto_revealed": m.ditto_revealed,
             "hatched_at": m.hatched_at,
             "profile": _profile.encode(m.profile),
+            "unown_form": m.unown_form,
         }
 
     return {
@@ -227,6 +237,7 @@ def encode(state: CompanionState) -> dict:
                 "raised_seconds": d.raised_seconds,
                 "released_at": d.released_at,
                 "profile": _profile.encode(d.profile),
+                "unown_form": d.unown_form,
             }
             for d in state.dex
         ],
@@ -239,6 +250,7 @@ def encode(state: CompanionState) -> dict:
         "growth_difficulty": state.growth_difficulty,
         "shop_difficulty": state.shop_difficulty,
         "representative_id": state.representative_id,
+        "representative_unown_form": state.representative_unown_form,
     }
 
 

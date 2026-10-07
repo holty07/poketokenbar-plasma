@@ -48,6 +48,8 @@ class MonState:
     hatched_at: float | None = None
     # Individual values (#264); None only on saves migrated lazily.
     profile: _profile.Profile | None = None
+    # Unown's letter (#288); None for every other species.
+    unown_form: str | None = None
 
     @property
     def current_id(self) -> int:
@@ -99,6 +101,7 @@ class DexEntry:
     # graduated (#242). None means graduated, so old saves need no migration.
     released_at: float | None = None
     profile: _profile.Profile | None = None
+    unown_form: str | None = None
 
     @property
     def released(self) -> bool:
@@ -137,6 +140,7 @@ class CompanionState:
     shop_difficulty: float = balance.DEFAULT_DIFFICULTY
     # Species pinned as the panel/pet representative (#158). None = current.
     representative_id: int | None = None
+    representative_unown_form: str | None = None
 
     @property
     def spendable_tokens(self) -> int:
@@ -147,6 +151,19 @@ class CompanionState:
         "<base>-<final>")."""
         prefix = f"{base_id}-"
         return any(key.startswith(prefix) for key in self.collected_finals)
+
+    def collected_unown_forms(self) -> set[str]:
+        """Letters owned — graduated, released or reached by the companion;
+        normal and shiny of a letter count once."""
+        forms = {
+            balance.resolved_unown_form(balance.UNOWN_SPECIES_ID, e.unown_form)
+            for e in self.dex
+            if balance.UNOWN_SPECIES_ID in e.chain_order
+        }
+        mon = self.active
+        if mon is not None and balance.UNOWN_SPECIES_ID in mon.path_ids[: mon.stage_index + 1]:
+            forms.add(balance.resolved_unown_form(balance.UNOWN_SPECIES_ID, mon.unown_form))
+        return forms
 
     def egg_threshold(self) -> int:
         return balance.scaled(balance.EGG_HATCH_THRESHOLD, self.growth_difficulty)
@@ -214,6 +231,15 @@ def roll_nature(rng: random.Random) -> str:
     return rng.choice(balance.NATURES)
 
 
+def roll_unown_form(rng: random.Random, collected: set[str]) -> str:
+    """Uncollected letters weigh 2, collected 1 — only after Unown itself was
+    rolled, so species odds are untouched. Uniform once all 28 are owned."""
+    weights = [
+        balance.collection_weight(2, form in collected) for form in balance.UNOWN_FORMS
+    ]
+    return rng.choices(balance.UNOWN_FORMS, weights=weights, k=1)[0]
+
+
 def roll_ditto(rng: random.Random, line: EvoLine) -> bool:
     """Whether this hatch is secretly a disguised Ditto.
 
@@ -242,6 +268,9 @@ def hatch(state: CompanionState, line: EvoLine, rng: random.Random) -> MonState:
         has_growth_boost=state.has_collected_final(line.base_id),
         hatched_at=__import__("time").time(),
         profile=_profile.generate(rng.getrandbits(64)),
+        unown_form=roll_unown_form(rng, state.collected_unown_forms())
+        if line.base_id == balance.UNOWN_SPECIES_ID
+        else None,
         # The disguise stores the species being impersonated; the reveal swaps
         # the display to Ditto while keeping this for the "it was Ditto!" moment.
         ditto_disguise=line.base_id if roll_ditto(rng, line) else None,
@@ -271,6 +300,7 @@ def graduate(state: CompanionState, mon: MonState, now: float | None = None) -> 
         caught_at=now,
         raised_seconds=(now - mon.hatched_at) if mon.hatched_at else None,
         profile=mon.profile,
+        unown_form=mon.unown_form,
     )
     state.dex.append(entry)
     state.collected_finals.add(f"{mon.base_id}-{mon.current_id}")
@@ -309,6 +339,7 @@ def release(state: CompanionState, now: float | None = None) -> DexEntry | None:
         raised_seconds=(now - mon.hatched_at) if mon.hatched_at else None,
         released_at=now,
         profile=mon.profile,
+        unown_form=mon.unown_form,
     )
     state.dex.append(entry)
     state.active = None
