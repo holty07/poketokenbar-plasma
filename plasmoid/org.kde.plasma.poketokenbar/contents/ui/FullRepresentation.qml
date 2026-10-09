@@ -340,7 +340,6 @@ PlasmaExtras.Representation {
 
     readonly property var recapBuckets: full.periodBuckets(full.recapPeriod, full.recapOffset)
     readonly property var recapSummary: full.summarize(full.recapBuckets)
-    readonly property var monthTrend: full.periodBuckets("month", 0)
     // Earliest recorded day bounds how far back the recap can go.
     readonly property string firstDay: {
         var keys = Object.keys(full.usageHistory);
@@ -795,29 +794,6 @@ PlasmaExtras.Representation {
                         }
 
                         Item { Layout.fillWidth: true }
-                    }
-
-                    // --- this month's daily trend, stacked by provider (#270/#348/#395) ---
-                    UsageChart {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: Kirigami.Units.gridUnit * 4
-                        visible: Object.keys(full.usageHistory).length > 0
-                        buckets: full.monthTrend
-                        labelEvery: 5
-                        colorFor: full.providerColor
-                        nameFor: full.providerName
-                        formatTokens: full.compact
-                        formatCost: full.money
-                        surface: full.ctpBase
-                        axisColor: full.ctpSurface1
-                    }
-
-                    QQC2.Button {
-                        Layout.alignment: Qt.AlignRight
-                        visible: Object.keys(full.usageHistory).length > 0
-                        flat: true
-                        text: i18n("Usage recap ›")
-                        onClicked: tabs.currentIndex = 4
                     }
 
                     // --- per-provider breakdown ---
