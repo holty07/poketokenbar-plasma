@@ -5,6 +5,7 @@ from .claude import ClaudeProvider
 from .codex import CodexProvider
 from .cursor import CursorProvider
 from .hermes import HermesProvider
+from .jcode import JcodeProvider
 from .kimi_code import KimiCodeProvider
 from .kiro import KiroProvider
 from .omp import OmpProvider
@@ -26,6 +27,7 @@ PROVIDERS: list[UsageProvider] = [
     AsideProvider(),
     KiroProvider(),
     CursorProvider(),
+    JcodeProvider(),
 ]
 
 __all__ = [
@@ -36,6 +38,7 @@ __all__ = [
     "CodexProvider",
     "CursorProvider",
     "HermesProvider",
+    "JcodeProvider",
     "KimiCodeProvider",
     "KiroProvider",
     "OmpProvider",

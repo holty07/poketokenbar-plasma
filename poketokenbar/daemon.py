@@ -287,6 +287,7 @@ def main() -> int:
     from .providers.codex import CodexProvider
     from .providers.cursor import CursorProvider
     from .providers.hermes import HermesProvider
+    from .providers.jcode import JcodeProvider
     from .providers.kimi_code import KimiCodeProvider
     from .providers.kiro import KiroProvider
     from .providers.omp import OmpProvider
@@ -311,6 +312,7 @@ def main() -> int:
             AsideProvider(cache=cache),
             KiroProvider(cache=cache),
             CursorProvider(cache=cache),
+            JcodeProvider(cache=cache),
         ],
         # Official Claude usage limits are disabled for now — this desktop
         # widget no longer needs to fetch or show them. Pass LimitsSource()

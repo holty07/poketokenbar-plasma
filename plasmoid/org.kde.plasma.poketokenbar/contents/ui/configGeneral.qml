@@ -22,7 +22,7 @@ KCM.SimpleKCM {
     property var settings: ({})
     property var snapshots: []
     readonly property var folderProviders: ["claude_code", "codex", "antigravity", "cursor",
-                                            "kiro", "pi", "omp", "kimi_code", "aside"]
+                                            "kiro", "pi", "omp", "kimi_code", "aside", "jcode"]
     readonly property var folderRows: {
         var map = page.settings.extra_scan_folders || {};
         var rows = [];

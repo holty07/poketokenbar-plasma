@@ -203,13 +203,13 @@ PlasmaExtras.Representation {
     // its rank. Validated (dataviz validator) against the Mocha base surface:
     // adjacent CVD ΔE ≥ 8.4, normal-vision ΔE ≥ 19.3, all ≥ 3:1.
     readonly property var providerSlots: ["claude_code", "codex", "opencode", "antigravity",
-                                          "cursor", "hermes", "kiro", "pi"]
+                                          "cursor", "hermes", "kiro", "pi", "omp", "aside", "kimi_code", "jcode"]
     readonly property var slotColors: ["#3987e5", "#d95926", "#199e70", "#c98500",
-                                       "#d55181", "#008300", "#9085e9", "#e66767"]
+                                       "#d55181", "#008300", "#9085e9", "#e66767", "#704c7a", "#b45a04", "#8040c0", "#0066cc"]
     readonly property var providerNames: ({
         claude_code: "Claude Code", codex: "Codex", opencode: "opencode",
         antigravity: "Antigravity", cursor: "Cursor", hermes: "Hermes", kiro: "Kiro",
-        pi: "Pi", omp: "omp", aside: "Aside", kimi_code: "Kimi Code", other: i18n("Other")
+        pi: "Pi", omp: "omp", aside: "Aside", kimi_code: "Kimi Code", jcode: "Jcode", other: i18n("Other")
     })
     property string recapPeriod: "month"   // "week" | "month" | "year"
     property int recapOffset: 0            // 0 = current period, -1 = the one before...
