@@ -3,6 +3,7 @@ from .aside import AsideProvider
 from .base import UsageProvider
 from .claude import ClaudeProvider
 from .codex import CodexProvider
+from .crush import CrushProvider
 from .cursor import CursorProvider
 from .hermes import HermesProvider
 from .jcode import JcodeProvider
@@ -28,6 +29,7 @@ PROVIDERS: list[UsageProvider] = [
     KiroProvider(),
     CursorProvider(),
     JcodeProvider(),
+    CrushProvider(),
 ]
 
 __all__ = [
@@ -36,6 +38,7 @@ __all__ = [
     "AsideProvider",
     "ClaudeProvider",
     "CodexProvider",
+    "CrushProvider",
     "CursorProvider",
     "HermesProvider",
     "JcodeProvider",

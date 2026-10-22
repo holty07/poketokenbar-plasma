@@ -95,7 +95,8 @@ poketokenbar/           # Main Python package
 │   ├── pi.py          # Pi session JSONL parser
 │   ├── omp.py         # oh-my-pi session JSONL parser
 │   ├── kiro.py        # Kiro CLI parser
-│   └── antigravity.py # Antigravity token-only provider
+│   ├── antigravity.py # Antigravity token-only provider
+│   └── crush.py       # Crush per-project crush.db reader
 └── companion_store.py # Ties providers to companion game logic
 
 plasmoid/               # QML UI files
@@ -125,6 +126,7 @@ Providers read from:
 - `~/.hermes/state.db` (Hermes Agent)
 - `~/.local/share/opencode/opencode.db` (opencode)
 - `~/.aside/u/*/state.db` (Aside)
+- `<project>/.crush/crush.db` via `~/.local/share/crush/projects.json` (Crush)
 - etc.
 
 ## Key Patterns
