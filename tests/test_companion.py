@@ -167,10 +167,10 @@ def test_shiny_charm_improves_the_odds():
             return 1
 
     plain, charmed = AlwaysBoundary(), AlwaysBoundary()
-    roll_shiny(plain, has_charm=False)
-    roll_shiny(charmed, has_charm=True)
+    roll_shiny(plain, charms=0)
+    roll_shiny(charmed, charms=1)
     assert plain.seen == balance.SHINY_DENOMINATOR
-    assert charmed.seen == balance.SHINY_CHARM_DENOMINATOR
+    assert charmed.seen == balance.shiny_denominator(1)
     assert charmed.seen < plain.seen
 
 
@@ -270,5 +270,15 @@ def test_disguised_ditto_hides_its_shine_until_revealed():
 
 
 def test_shiny_denominator_follows_the_charm():
-    assert balance.shiny_denominator(False) == balance.SHINY_DENOMINATOR
-    assert balance.shiny_denominator(True) == balance.SHINY_CHARM_DENOMINATOR
+    assert balance.shiny_denominator(0) == balance.SHINY_DENOMINATOR
+    assert balance.shiny_denominator(1) == 63
+
+
+def test_shiny_charms_accelerate_to_a_guarantee():
+    odds = [balance.shiny_denominator(n) for n in range(balance.SHINY_CHARM_MAX + 5)]
+    assert odds[:4] == [64, 63, 63, 62]  # whole-number odds, so steps round
+    assert odds[50] == 32
+    assert all(a >= b for a, b in zip(odds, odds[1:]))
+    # The last charm guarantees a shiny; extras past the cap change nothing.
+    assert odds[balance.SHINY_CHARM_MAX:] == [1] * 5
+    assert roll_shiny(random.Random(0), balance.SHINY_CHARM_MAX)

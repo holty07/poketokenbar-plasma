@@ -27,8 +27,9 @@ class ShopEntry:
     owned: bool = False
 
 
-# Consumables can be bought several at a time (#371); the Shiny Charm is
-# passive and eggs replace the companion, so both stay single-purchase.
+# Consumables can be bought several at a time (#371). Shiny Charms change
+# price with every purchase and eggs replace the companion, so both stay
+# single-purchase.
 STACKABLE = ("rareCandy", "mint")
 
 
@@ -54,10 +55,11 @@ def entries(state: CompanionState) -> list[ShopEntry]:
         ShopEntry(
             "shinyCharm",
             "item",
-            price(state, balance.SHINY_CHARM_PRICE),
+            price(state, balance.shiny_charm_price(state.inventory.get("shinyCharm", 0))),
             "Shiny Charm",
-            # Passive and permanent: held, never consumed, bought once.
-            owned=state.inventory.get("shinyCharm", 0) > 0,
+            # Passive and permanent: held, never consumed. Sold out once the
+            # cap guarantees a shiny, since more would do nothing.
+            owned=state.inventory.get("shinyCharm", 0) >= balance.SHINY_CHARM_MAX,
         ),
     ]
     for tier in balance.EGG_SHOP_TIERS:
@@ -108,7 +110,7 @@ def buy(state: CompanionState, key: str, count: int = 1, confirm: bool = False) 
 
     if entry.kind == "item":
         if entry.key == "shinyCharm" and entry.owned:
-            raise ShopError("shiny charm is already held")
+            raise ShopError(f"already holding all {balance.SHINY_CHARM_MAX} shiny charms")
         _debit(state, entry.price * count)
         state.inventory[entry.key] = state.inventory.get(entry.key, 0) + count
         return f"bought {entry.label}" + (f" ×{count}" if count > 1 else "")

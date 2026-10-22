@@ -24,11 +24,23 @@ def test_entries_are_sorted_by_price():
     assert prices == sorted(prices)
 
 
-def test_shiny_charm_shows_as_owned_once_held():
+def _charm(s):
+    return next(e for e in shop.entries(s) if e.key == "shinyCharm")
+
+
+def test_shiny_charm_sells_out_only_at_the_cap():
     s = CompanionState()
-    s.inventory["shinyCharm"] = 1
-    charm = next(e for e in shop.entries(s) if e.key == "shinyCharm")
-    assert charm.owned is True
+    s.inventory["shinyCharm"] = balance.SHINY_CHARM_MAX - 1
+    assert _charm(s).owned is False
+    s.inventory["shinyCharm"] = balance.SHINY_CHARM_MAX
+    assert _charm(s).owned is True
+
+
+def test_shiny_charm_price_rises_with_each_one_held():
+    s = CompanionState()
+    assert _charm(s).price == balance.SHINY_CHARM_PRICE
+    s.inventory["shinyCharm"] = 50
+    assert _charm(s).price == balance.SHINY_CHARM_PRICE * 2
 
 
 def test_three_egg_tiers_are_offered():
@@ -59,9 +71,20 @@ def test_unknown_item_is_rejected():
         shop.buy(CompanionState(), "masterball")
 
 
-def test_shiny_charm_cannot_be_bought_twice():
-    s = _with_mon(tokens=balance.SHINY_CHARM_PRICE * 2)
+def test_each_shiny_charm_is_charged_at_its_own_price():
+    first, second = balance.shiny_charm_price(0), balance.shiny_charm_price(1)
+    s = _with_mon(tokens=first + second)
     shop.buy(s, "shinyCharm")
+    shop.buy(s, "shinyCharm")
+    assert s.inventory["shinyCharm"] == 2 and s.spendable_tokens == 0
+    with pytest.raises(shop.ShopError):
+        shop.buy(s, "shinyCharm", count=2)
+
+
+def test_no_shiny_charms_past_the_cap():
+    s = _with_mon(tokens=balance.SHINY_CHARM_PRICE * 10)
+    s.inventory["shinyCharm"] = balance.SHINY_CHARM_MAX
+    assert shop.max_buy_count(s, "shinyCharm") == 0
     with pytest.raises(shop.ShopError):
         shop.buy(s, "shinyCharm")
 

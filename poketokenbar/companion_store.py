@@ -228,9 +228,9 @@ class CompanionStore:
             }
 
     def shiny_odds(self) -> int:
-        """The denominator a hatch rolls at right now (#351). The charm is
+        """The denominator a hatch rolls at right now (#351). Charms are
         permanent once bought, so this is also what the last hatch used."""
-        return balance.shiny_denominator(self.state.inventory.get("shinyCharm", 0) > 0)
+        return balance.shiny_denominator(self.state.inventory.get("shinyCharm", 0))
 
     def _line_for_egg(self):
         """Species data for a hatch, or None when offline."""
@@ -530,7 +530,8 @@ class CompanionStore:
                 "key": key,
                 "label": balance.ITEM_LABEL.get(key, key),
                 "description": balance.ITEM_DESCRIPTION.get(key, ""),
-                "effect": balance.ITEM_EFFECT.get(key, ""),
+                "effect": (f"Shiny odds 1/{self.shiny_odds()}" if key == "shinyCharm"
+                           else balance.ITEM_EFFECT.get(key, "")),
                 "sprite_path": self._item_sprite(key),
                 "emoji": emoji.get(key, "?"),
                 "count": count,

@@ -118,8 +118,17 @@ RARE_CANDY_SESSION_GRANT = 1
 
 MINT_PRICE = 100_000_000
 
-SHINY_CHARM_PRICE = 3_000_000_000
-SHINY_CHARM_DENOMINATOR = 48  # 1/64 -> 1/48 while held
+SHINY_CHARM_PRICE = 3_000_000_000  # the first charm; each later one costs more
+SHINY_CHARM_PRICE_STEP = 0.02  # +2% of the base price per charm already held
+# Charms stack: each takes an equal slice off the denominator, so the odds
+# start slow (1/63, 1/62...) and accelerate until the last one guarantees it.
+SHINY_CHARM_MAX = 100
+
+
+def shiny_charm_price(held: int) -> int:
+    """Base price of the next charm, before shop difficulty. The ramp offsets
+    the late charms being worth far more than the early ones."""
+    return round(SHINY_CHARM_PRICE * (1 + SHINY_CHARM_PRICE_STEP * max(0, held)))
 
 FRESH_EGG_PRICE = 1_000_000_000
 # Sold tiers: no guarantee, uncommon-or-better, rare-or-better. No legendary
@@ -170,9 +179,13 @@ def collection_weight(weight: int, collected: bool) -> int:
     return max(1, weight // 2) if collected else max(1, weight)
 
 
-def shiny_denominator(has_charm: bool) -> int:
-    """Single source for the roll and the odds quoted in notifications (#351)."""
-    return SHINY_CHARM_DENOMINATOR if has_charm else SHINY_DENOMINATOR
+def shiny_denominator(charms: int) -> int:
+    """Single source for the roll and the odds quoted in notifications (#351).
+    Linear in the denominator from SHINY_DENOMINATOR down to 1 (guaranteed)
+    at SHINY_CHARM_MAX charms."""
+    charms = max(0, min(int(charms), SHINY_CHARM_MAX))
+    step = (SHINY_DENOMINATOR - 1) * charms / SHINY_CHARM_MAX
+    return max(1, round(SHINY_DENOMINATOR - step))
 
 # PokeAPI item sprite names; None means no sprite exists and the UI falls back
 # to an emoji. Mint is a Gen-VIII item PokeAPI has no sprite for.
@@ -191,7 +204,7 @@ ITEM_LABEL = {
 ITEM_DESCRIPTION = {
     "rareCandy": "Raises your Pokemon's EXP by 100M.",
     "mint": "Randomly changes your Pokemon's nature.",
-    "shinyCharm": "While owned, raises the chance of hatching a shiny.",
+    "shinyCharm": "Raises the chance of hatching a shiny. Each costs more; 100 guarantee one.",
 }
 
 ITEM_EFFECT = {

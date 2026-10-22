@@ -226,8 +226,8 @@ STATUS_MESSAGE = {
 }
 
 
-def roll_shiny(rng: random.Random, has_charm: bool) -> bool:
-    return rng.randrange(balance.shiny_denominator(has_charm)) == 0
+def roll_shiny(rng: random.Random, charms: int) -> bool:
+    return rng.randrange(balance.shiny_denominator(charms)) == 0
 
 
 def roll_nature(rng: random.Random) -> str:
@@ -257,7 +257,7 @@ def roll_ditto(rng: random.Random, line: EvoLine) -> bool:
 
 def hatch(state: CompanionState, line: EvoLine, rng: random.Random) -> MonState:
     """Turn the egg into a companion. Shiny and nature are fixed here."""
-    has_charm = state.inventory.get("shinyCharm", 0) > 0
+    charms = state.inventory.get("shinyCharm", 0)
     mon = MonState(
         base_id=line.base_id,
         path_ids=list(line.path_ids),
@@ -266,7 +266,7 @@ def hatch(state: CompanionState, line: EvoLine, rng: random.Random) -> MonState:
         used_at_stage=0,
         rarity=line.rarity,
         total_forms=line.total_forms,
-        is_shiny=roll_shiny(rng, has_charm),
+        is_shiny=roll_shiny(rng, charms),
         nature=roll_nature(rng),
         has_growth_boost=state.has_collected_final(line.base_id),
         hatched_at=__import__("time").time(),
