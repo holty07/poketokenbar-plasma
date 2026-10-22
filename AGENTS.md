@@ -3,6 +3,7 @@
 A KDE plasmoid that tracks AI coding token usage and displays it as a Pokémon companion.
 
 ## Project Overview
+- **Before editing any file, read it first. Before modifying a function, grep for all callers. Research before you edit.**
 
 **Type**: Python + QML (KDE Plasma widget) + systemd daemon
 
