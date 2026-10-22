@@ -479,6 +479,7 @@ PlasmaExtras.Representation {
 
             // ======================= HOME =======================
             QQC2.ScrollView {
+                id: homeScroll
                 clip: true
                 contentWidth: availableWidth
 
@@ -488,7 +489,9 @@ PlasmaExtras.Representation {
                     // scrollbar's reserved space once content overflows, so the
                     // scrollbar silently overlaps (and clips) right-aligned
                     // content instead of the layout narrowing to make room.
-                    width: parent.availableWidth
+                    // Reference it by id: `parent` here is the Flickable's
+                    // contentItem, which has no availableWidth.
+                    width: homeScroll.availableWidth
                     spacing: Kirigami.Units.smallSpacing
 
                     // --- celebration banner ---
@@ -952,6 +955,7 @@ PlasmaExtras.Representation {
 
             // ======================= SHOP =======================
             QQC2.ScrollView {
+                id: shopScroll
                 clip: true
                 contentWidth: availableWidth
 
@@ -961,7 +965,9 @@ PlasmaExtras.Representation {
                     // scrollbar's reserved space once content overflows, so the
                     // scrollbar silently overlaps (and clips) right-aligned
                     // content instead of the layout narrowing to make room.
-                    width: parent.availableWidth
+                    // Reference it by id: `parent` here is the Flickable's
+                    // contentItem, which has no availableWidth.
+                    width: shopScroll.availableWidth
                     spacing: Kirigami.Units.smallSpacing
 
                     ColumnLayout {
@@ -1683,6 +1689,7 @@ PlasmaExtras.Representation {
 
                     // ---- Catch log ----
                     QQC2.ScrollView {
+                        id: catchLogScroll
                         anchors.fill: parent
                         visible: collectionTabs.currentIndex === 1
                         clip: true
@@ -1690,11 +1697,13 @@ PlasmaExtras.Representation {
 
                         ColumnLayout {
                             // Bind to the ScrollView's own availableWidth, not a fixed
-                    // full.width - margin: a fixed width ignores the vertical
-                    // scrollbar's reserved space once content overflows, so the
-                    // scrollbar silently overlaps (and clips) right-aligned
-                    // content instead of the layout narrowing to make room.
-                    width: parent.availableWidth
+                            // full.width - margin: a fixed width ignores the vertical
+                            // scrollbar's reserved space once content overflows, so the
+                            // scrollbar silently overlaps (and clips) right-aligned
+                            // content instead of the layout narrowing to make room.
+                            // Reference it by id: `parent` here is the Flickable's
+                            // contentItem, which has no availableWidth.
+                            width: catchLogScroll.availableWidth
                             spacing: Kirigami.Units.smallSpacing
 
                             PlasmaComponents.Label {
@@ -1834,6 +1843,7 @@ PlasmaExtras.Representation {
 
             // ======================= USAGE (recap) =======================
             QQC2.ScrollView {
+                id: recapScroll
                 clip: true
                 contentWidth: availableWidth
 
@@ -1843,7 +1853,9 @@ PlasmaExtras.Representation {
                     // scrollbar's reserved space once content overflows, so the
                     // scrollbar silently overlaps (and clips) right-aligned
                     // content instead of the layout narrowing to make room.
-                    width: parent.availableWidth
+                    // Reference it by id: `parent` here is the Flickable's
+                    // contentItem, which has no availableWidth.
+                    width: recapScroll.availableWidth
                     spacing: Kirigami.Units.smallSpacing
 
                     // Period controls in one row above the chart.
