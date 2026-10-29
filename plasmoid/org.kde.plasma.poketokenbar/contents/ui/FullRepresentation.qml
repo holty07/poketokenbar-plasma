@@ -2065,6 +2065,7 @@ PlasmaExtras.Representation {
                          : "")
                 color: full.ctpRed
                 elide: Text.ElideRight
+                Layout.fillWidth: true
                 Layout.maximumWidth: full.width / 2
             }
         }
