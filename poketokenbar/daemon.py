@@ -295,7 +295,6 @@ def main() -> int:
     from .providers.openclaude import OpenClaudeProvider
     from .providers.opencode import OpencodeProvider
     from .providers.pi import PiProvider
-    from .providers.cindy import CindyProvider
 
     cache_base = os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")
     cache = ScanCache(Path(cache_base) / "poketokenbar" / "scan.db")
@@ -311,7 +310,6 @@ def main() -> int:
             HermesProvider(cache=cache),
             KimiCodeProvider(cache=cache),
             PiProvider(cache=cache),
-            CindyProvider(cache=cache),
             OmpProvider(cache=cache),
             AsideProvider(cache=cache),
             KiroProvider(cache=cache),
