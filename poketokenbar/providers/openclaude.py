@@ -45,10 +45,20 @@ class OpenClaudeProvider(UsageProvider):
     def scan_entries(self, start: date, end: date) -> Iterator[Entry]:
         """Scan all project JSONL files for entries in [start, end]."""
         for root in self._scan_roots():
-            for project_dir in root.iterdir():
+            try:
+                project_dirs = list(root.iterdir())
+            except OSError:
+                # Skip roots we cannot list (permissions, transient race).
+                continue
+            for project_dir in project_dirs:
                 if not project_dir.is_dir():
                     continue
-                for jsonl_file in project_dir.glob("*.jsonl"):
+                try:
+                    jsonl_files = list(project_dir.glob("*.jsonl"))
+                except OSError:
+                    # Skip project directories we cannot list.
+                    continue
+                for jsonl_file in jsonl_files:
                     try:
                         yield from self._parse_file(jsonl_file, start, end)
                     except Exception:

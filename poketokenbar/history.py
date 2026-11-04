@@ -26,7 +26,7 @@ def collect(providers, errors: list[str] | None = None) -> dict[str, dict[str, d
             entries = scan()
         except Exception as exc:  # noqa: BLE001 - per-provider isolation
             if errors is not None:
-                errors.append(f"{provider.id} history: {exc}")
+                errors.append(f"{provider.id}: could not scan history ({exc})")
             continue
         for e in entries:
             if not isinstance(e, Entry) or e.total <= 0:
