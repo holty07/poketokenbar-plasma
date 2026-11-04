@@ -3,8 +3,11 @@ from .aside import AsideProvider
 from .base import UsageProvider
 from .claude import ClaudeProvider
 from .codex import CodexProvider
+from .copilot import CopilotProvider
 from .crush import CrushProvider
 from .cursor import CursorProvider
+from .gemini import GeminiProvider
+from .grok import GrokProvider
 from .hermes import HermesProvider
 from .jcode import JcodeProvider
 from .kimi_code import KimiCodeProvider
@@ -30,6 +33,9 @@ PROVIDERS: list[UsageProvider] = [
     CursorProvider(),
     JcodeProvider(),
     CrushProvider(),
+    GeminiProvider(),
+    GrokProvider(),
+    CopilotProvider(),
 ]
 
 __all__ = [
@@ -38,8 +44,11 @@ __all__ = [
     "AsideProvider",
     "ClaudeProvider",
     "CodexProvider",
+    "CopilotProvider",
     "CrushProvider",
     "CursorProvider",
+    "GeminiProvider",
+    "GrokProvider",
     "HermesProvider",
     "JcodeProvider",
     "KimiCodeProvider",

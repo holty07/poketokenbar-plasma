@@ -100,7 +100,9 @@ A second widget puts your companion on the desktop at any size from 48 to 384px.
 | **Aside** | ✅ reads Aside's per-profile state database, including its own cost |
 | **Kiro CLI** | ✅ estimated tokens (bytes/4 of resent conversation text) — Kiro stores no token counts or cost |
 | **Cursor** | ✅ Cursor's dashboard usage API when signed in (real tokens and cost), else local chat-bubble token counts |
-| Gemini CLI, Grok CLI, Copilot CLI | ❌ not ported — see [What's missing](#whats-missing) |
+| **Gemini CLI** | ✅ reads `~/.gemini/tmp/**/chats/*.json(l)` — per-message `tokens` block, `message_update` corrections |
+| **Grok Build CLI** | ✅ reads `~/.grok/sessions/**/updates.jsonl` — `turn_completed` usage with server-reported cost |
+| **Copilot CLI** | ✅ reads `~/.copilot/session-store.db` — `assistant_usage_events`, cached-prompt token dedup |
 
 ## Install
 
@@ -210,7 +212,7 @@ Session logs carry **no account marker**, so token totals from every account on 
 
 Compared to the macOS original:
 
-- **Some usage providers.** Claude Code, Codex, Antigravity, opencode, Hermes Agent, Kimi Code, Pi, omp, Aside, Kiro CLI and Cursor are ported (the last six from upstream's parsers and test fixtures, without real Linux data to verify against). Gemini CLI, Grok CLI and Copilot CLI are not. Cursor's remaining-included-usage limits panel is not ported either. The provider interface is unchanged — each is one file when someone who uses one wants to add it.
+- **Some usage providers.** Claude Code, Codex, Antigravity, opencode, Hermes Agent, Kimi Code, Pi, omp, Aside, Kiro CLI, Cursor, Gemini CLI, Grok Build CLI and Copilot CLI are ported (the last seven from upstream's parsers and test fixtures, without real Linux data to verify against). The provider interface is unchanged — each is one file when someone who uses one wants to add it.
 - **Antigravity's official rate limits.** The Swift original also polls Google's quota endpoint (`AntigravityRateLimitsProvider`) for a 5-hour/weekly percentage. Not ported here — it needs a second, per-provider limits pipeline (today's `LimitsSource` is Claude-only) plus OAuth token handling, so it's out of scope for the usage-provider port. Token counts and cost (always $0 — subscription-billed) work today without it.
 - In-app updater, crash reporter, and Keychain handling — macOS concepts with no Linux equivalent, or unnecessary here.
 - A diagnostics / log viewer.

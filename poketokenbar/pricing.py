@@ -135,11 +135,6 @@ def rate(model: str) -> ModelRate:
         return per_million(1, 5, 1.25, 0.1)
     if "gpt" in m or "codex" in m or "o4" in m or "o3" in m:
         return per_million(5, 30, 0, 0.5)
-    if m.startswith("gemini"):
-        if "pro" in m:
-            return per_million(1.25, 10, 0, 0.125)
-        if "flash" in m:
-            return per_million(0.30, 2.5, 0, 0.03)
     return ZERO
 
 

@@ -304,6 +304,9 @@ def main() -> int:
     from .providers.codex import CodexProvider
     from .providers.crush import CrushProvider
     from .providers.cursor import CursorProvider
+    from .providers.gemini import GeminiProvider
+    from .providers.grok import GrokProvider
+    from .providers.copilot import CopilotProvider
     from .providers.hermes import HermesProvider
     from .providers.jcode import JcodeProvider
     from .providers.kimi_code import KimiCodeProvider
@@ -331,6 +334,9 @@ def main() -> int:
             AsideProvider(cache=cache),
             KiroProvider(cache=cache),
             CursorProvider(cache=cache),
+            GeminiProvider(cache=cache),
+            GrokProvider(cache=cache),
+            CopilotProvider(cache=cache),
             JcodeProvider(cache=cache),
             CrushProvider(cache=cache),
             OpenClaudeProvider(cache=cache),

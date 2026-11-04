@@ -32,8 +32,9 @@ def test_unknown_model_costs_nothing_rather_than_guessing():
 
 
 def test_gemini_family_fallback():
-    assert pricing.rate("gemini-3.0-pro").input == pytest.approx(1.25 / 1_000_000)
-    assert pricing.rate("gemini-3.0-flash").input == pytest.approx(0.30 / 1_000_000)
+    # Undocumented gemini variants price at $0, matching upstream.
+    assert pricing.rate("gemini-3.0-pro") == pricing.ZERO
+    assert pricing.rate("gemini-3.0-flash") == pricing.ZERO
 
 
 def test_unknown_gemini_variant_is_zero():
