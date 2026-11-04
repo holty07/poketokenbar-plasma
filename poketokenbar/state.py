@@ -108,6 +108,7 @@ def build(
     celebration: dict | None = None,
     snapshots: list | None = None,
     history: dict | None = None,
+    recap: dict | None = None,
 ) -> dict:
     total_tokens = sum(d.total_tokens for d in daily_by_provider.values())
     total_cost = sum(d.total_cost for d in daily_by_provider.values())
@@ -158,6 +159,7 @@ def build(
         },
         "history": history or {},
         "burn": burn or {},
+        "recap": recap or {},
         "provider_status": provider_status or {},
         "panel": {
             "tokens_text": fmt.compact(total_tokens)

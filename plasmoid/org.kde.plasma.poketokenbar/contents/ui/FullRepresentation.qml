@@ -33,6 +33,7 @@ PlasmaExtras.Representation {
     readonly property var activeCounts: collectionTabs.currentIndex === 1
                                         ? catchCounts : rarityCounts
     readonly property var burn: root.appState && root.appState.burn ? root.appState.burn : ({})
+    readonly property var recap: root.appState && root.appState.recap ? root.appState.recap : ({})
     readonly property var strings: root.appState && root.appState.strings
                                    ? root.appState.strings : ({})
     readonly property var celebration: root.appState && root.appState.celebration
@@ -360,8 +361,10 @@ PlasmaExtras.Representation {
         return full.dayKey(end);
     }
     // Back stops at the first period that still holds recorded history.
-    readonly property bool recapCanGoBack: full.firstDay !== ""
-        && full.periodEndKey(full.recapPeriod, full.recapOffset - 1) >= full.firstDay
+    readonly property bool recapCanGoBack: full.recap.can_go_back !== undefined
+        ? full.recap.can_go_back
+        : (full.firstDay !== ""
+           && full.periodEndKey(full.recapPeriod, full.recapOffset - 1) >= full.firstDay)
 
     // ---- search, sort and filters (upstream #329) ----
     property string dexSearch: ""
@@ -1925,8 +1928,75 @@ PlasmaExtras.Representation {
                             }
                             PlasmaExtras.Heading {
                                 level: 2
-                                // Out of the days (or months) so far, not the whole period.
                                 text: full.recapSummary.active + " / " + full.recapSummary.elapsed
+                            }
+                        }
+                        ColumnLayout {
+                            spacing: 0
+                            PlasmaComponents.Label { text: i18n("Previous period"); opacity: 0.6 }
+                            PlasmaExtras.Heading {
+                                level: 2
+                                text: {
+                                    var prev = full.recap.previous_total;
+                                    if (prev === undefined || prev === null)
+                                        return "—";
+                                    return full.compact(prev);
+                                }
+                            }
+                        }
+                        ColumnLayout {
+                            spacing: 0
+                            PlasmaComponents.Label { text: i18n("Change"); opacity: 0.6 }
+                            PlasmaExtras.Heading {
+                                level: 2
+                                text: {
+                                    var d = full.recap.delta;
+                                    if (d === undefined || d === null)
+                                        return "—";
+                                    var pct = Math.round(d * 100);
+                                    return (pct >= 0 ? "+" : "") + pct + "%";
+                                }
+                                color: {
+                                    var d = full.recap.delta;
+                                    if (d === undefined || d === null)
+                                        return full.ctpOverlay0;
+                                    if (d > 0) return full.ctpPeach;
+                                    if (d < 0) return full.ctpGreen;
+                                    return full.ctpText;
+                                }
+                            }
+                        }
+                        ColumnLayout {
+                            spacing: 0
+                            PlasmaComponents.Label { text: i18n("Best day"); opacity: 0.6 }
+                            PlasmaExtras.Heading {
+                                level: 2
+                                text: {
+                                    var bd = full.recap.best_day;
+                                    if (!bd)
+                                        return "—";
+                                    return full.compact(bd.tokens);
+                                }
+                            }
+                            PlasmaComponents.Label {
+                                text: {
+                                    var bd = full.recap.best_day;
+                                    if (!bd)
+                                        return "";
+                                    return bd.key;
+                                }
+                                opacity: 0.6
+                                font.pointSize: Kirigami.Theme.smallFont.pointSize
+                            }
+                        }
+                        ColumnLayout {
+                            spacing: 0
+                            PlasmaComponents.Label { text: i18n("Best streak"); opacity: 0.6 }
+                            PlasmaExtras.Heading { level: 2; text: full.recap.best_streak || 0 }
+                            PlasmaComponents.Label {
+                                text: i18n("consecutive active days")
+                                opacity: 0.6
+                                font.pointSize: Kirigami.Theme.smallFont.pointSize
                             }
                         }
                     }
@@ -1991,6 +2061,52 @@ PlasmaExtras.Representation {
                                 opacity: 0.6
                                 Layout.preferredWidth: Kirigami.Units.gridUnit * 3.5
                                 horizontalAlignment: Text.AlignRight
+                            }
+                        }
+                    }
+
+                    // Pokémon graduated during this period.
+                    Repeater {
+                        model: full.recap.graduated
+                        visible: full.recap.graduated.length > 0
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 0
+
+                            PlasmaComponents.Label {
+                                text: i18n("Graduated this period")
+                                opacity: 0.6
+                                Layout.alignment: Qt.AlignLeft
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.smallSpacing
+
+                                PlasmaComponents.Label {
+                                    text: "#" + (modelData.species_id || "?")
+                                    opacity: 0.7
+                                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                }
+
+                                PlasmaComponents.Label {
+                                    text: modelData.name || i18n("Pokémon")
+                                    font.bold: true
+                                }
+
+                                PlasmaComponents.Label {
+                                    text: modelData.rarity.charAt(0).toUpperCase()
+                                          + modelData.rarity.slice(1)
+                                    opacity: 0.7
+                                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                }
+
+                                Item { Layout.fillWidth: true }
+
+                                PlasmaComponents.Label {
+                                    text: modelData.is_shiny ? "✨" : ""
+                                }
                             }
                         }
                     }

@@ -34,6 +34,8 @@ DEFAULTS: dict[str, object] = {
     # Provider id -> extra folders to scan on top of the built-in ones
     # (upstream #177). Edited with `poketokenctl folder add|remove`.
     "extra_scan_folders": {},
+    # Default recap scope for the Usage tab (week | month | year).
+    "recap_period": "month",
 }
 
 

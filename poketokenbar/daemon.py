@@ -7,9 +7,10 @@ import time
 from datetime import date
 from pathlib import Path
 
-from . import commands, config, history, state
+from . import commands, config, history, recap, state
 from .companion_store import CompanionStore
 from .burn import BurnTracker
+from .limits_source import LimitsSource
 from .notify import Notifier
 from .status import StatusChecker
 from .pokeapi import PokeAPI
@@ -236,6 +237,21 @@ class Daemon:
             except Exception as exc:
                 errors.append(f"status: {exc}")
 
+        # Usage recap for the current period (scope/offset live in QML; the
+        # daemon owns the source of truth for previous-period comparison,
+        # best day, streak and graduated Pokémon).
+        today_d = date.fromisoformat(today_str)
+        catch_log = (
+            self.companion_store.catch_log_payload() if self.companion_store else None
+        )
+        recap_payload = recap.recap_for_period(
+            usage_history,
+            self.config_values.get("recap_period", "month"),
+            0,
+            today_d,
+            catch_log,
+        )
+
         payload = state.build(
             daily_by_provider,
             self.config_values,
@@ -245,12 +261,13 @@ class Daemon:
             shop_payload=self.companion_store.shop_payload() if self.companion_store else None,
             bag_payload=self.companion_store.bag_payload() if self.companion_store else None,
             dex_payload=self.companion_store.dex_payload() if self.companion_store else None,
-            catch_log=self.companion_store.catch_log_payload() if self.companion_store else None,
+            catch_log=catch_log,
             rarity_counts=self.companion_store.rarity_counts() if self.companion_store else None,
             catch_counts=self.companion_store.catch_rarity_counts() if self.companion_store else None,
             snapshots=self.companion_store.snapshots_payload() if self.companion_store else None,
-            history=history.payload(usage_history, date.fromisoformat(today_str)),
+            history=history.payload(usage_history, today_d),
             periods=periods,
+            recap=recap_payload,
             burn=self.burn.payload() if self.burn is not None else None,
             provider_status=status_payload,
             celebration=self.companion_store.celebration if self.companion_store else None,
@@ -318,10 +335,11 @@ def main() -> int:
             CrushProvider(cache=cache),
             OpenClaudeProvider(cache=cache),
         ],
-        # Official Claude usage limits are disabled for now — this desktop
-        # widget no longer needs to fetch or show them. Pass LimitsSource()
-        # here (see poketokenbar.limits_source) to bring the feature back.
-        limits_source=None,
+        # Official Claude usage limits (5-hour / weekly) via
+        # ~/.claude/.credentials.json → api.anthropic.com/api/oauth/usage.
+        # Best effort: a missing credential or network failure hides the limits
+        # section and never affects token counts, which come from local logs.
+        limits_source=LimitsSource(),
         companion_store=CompanionStore(
             api=PokeAPI(), sprite_store=SpriteStore()
         ),
