@@ -77,6 +77,7 @@ poketokenbar/           # Main Python package
 ├── notify.py          # Desktop notifications
 ├── cache.py           # File scan result caching (SQLite)
 ├── profile.py         # Individual Pokémon stats (IVs, moves)
+├── regional_forms.py  # Alolan/Galarian/Hisuian/Paldean forms per individual
 ├── shop.py            # Item costs and inventory
 ├── snapshots.py       # Save backup/restore
 ├── limits.py          # Token limit tracking (disabled in this fork)

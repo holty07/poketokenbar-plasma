@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from . import balance
 from . import profile as _profile
+from . import regional_forms
 from .balance import Rarity
 
 
@@ -50,6 +51,9 @@ class MonState:
     profile: _profile.Profile | None = None
     # Unown's letter (#288); None for every other species.
     unown_form: str | None = None
+    # Regional form ("alola", "galar", "hisui", "paldea") of this individual;
+    # None is the standard form. See regional_forms for which stages show it.
+    regional_form: str | None = None
 
     @property
     def current_id(self) -> int:
@@ -102,6 +106,8 @@ class DexEntry:
     released_at: float | None = None
     profile: _profile.Profile | None = None
     unown_form: str | None = None
+    # Regional form carried over from the companion; None is standard.
+    regional_form: str | None = None
 
     @property
     def released(self) -> bool:
@@ -278,6 +284,8 @@ def hatch(state: CompanionState, line: EvoLine, rng: random.Random) -> MonState:
         # the display to Ditto while keeping this for the "it was Ditto!" moment.
         ditto_disguise=line.base_id if roll_ditto(rng, line) else None,
     )
+    # Rolled last so lines with regional forms leave every earlier roll as is.
+    mon.regional_form = regional_forms.roll(rng, mon.path_ids)
     state.active = mon
     # The guarantee is consumed by the hatch it paid for.
     state.egg_tier = None
@@ -304,6 +312,7 @@ def graduate(state: CompanionState, mon: MonState, now: float | None = None) -> 
         raised_seconds=(now - mon.hatched_at) if mon.hatched_at else None,
         profile=mon.profile,
         unown_form=mon.unown_form,
+        regional_form=mon.regional_form,
     )
     state.dex.append(entry)
     state.collected_finals.add(f"{mon.base_id}-{mon.current_id}")
@@ -343,6 +352,7 @@ def release(state: CompanionState, now: float | None = None) -> DexEntry | None:
         released_at=now,
         profile=mon.profile,
         unown_form=mon.unown_form,
+        regional_form=mon.regional_form,
     )
     state.dex.append(entry)
     state.active = None

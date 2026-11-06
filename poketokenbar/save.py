@@ -17,6 +17,7 @@ from pathlib import Path
 
 from . import balance
 from . import profile as _profile
+from . import regional_forms
 from .balance import Rarity
 from .companion import CompanionState, DexEntry, MonState
 
@@ -115,6 +116,8 @@ def _decode_mon(raw) -> MonState | None:
         unown_form=balance.resolved_unown_form(
             _lenient(raw, "base_id", int, path_ids[0]), raw.get("unown_form")
         ),
+        # Older saves lack the key; an unknown or impossible region reads as standard.
+        regional_form=regional_forms.resolved(path_ids, raw.get("regional_form")),
     )
 
 
@@ -142,6 +145,7 @@ def _decode_dex_entry(raw) -> DexEntry | None:
         released_at=_float(raw, "released_at"),
         profile=_profile.decode(raw.get("profile")),
         unown_form=balance.resolved_unown_form(base_id, raw.get("unown_form")),
+        regional_form=regional_forms.resolved(_dedup(chain), raw.get("regional_form")),
     )
 
 
@@ -221,6 +225,7 @@ def encode(state: CompanionState) -> dict:
             "hatched_at": m.hatched_at,
             "profile": _profile.encode(m.profile),
             "unown_form": m.unown_form,
+            "regional_form": m.regional_form,
         }
 
     return {
@@ -246,6 +251,7 @@ def encode(state: CompanionState) -> dict:
                 "released_at": d.released_at,
                 "profile": _profile.encode(d.profile),
                 "unown_form": d.unown_form,
+                "regional_form": d.regional_form,
             }
             for d in state.dex
         ],

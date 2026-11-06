@@ -12,7 +12,18 @@ import random
 from datetime import date as _date
 from pathlib import Path
 
-from . import balance, companion, l10n, pokeapi, profile, save, shop, snapshots, sprites
+from . import (
+    balance,
+    companion,
+    l10n,
+    pokeapi,
+    profile,
+    regional_forms,
+    save,
+    shop,
+    snapshots,
+    sprites,
+)
 from .companion import CompanionState
 from .format import compact as _compact
 
@@ -196,7 +207,10 @@ class CompanionStore:
         if events is None:
             return
         mon = self.state.active
-        name = self.species_name(mon.current_id, self.state.language) if mon else ""
+        name = (
+            self.display_name(mon.current_id, mon.unown_form, mon.regional_form)
+            if mon else ""
+        )
         if events.ditto_revealed:
             self.celebration = {
                 "kind": "ditto",
@@ -273,18 +287,28 @@ class CompanionStore:
                 return names[code]
         return names.get("en", "")
 
-    def display_name(self, species_id: int, form: str | None = None) -> str:
-        """Species name, with Unown's letter appended ("Unown [B]")."""
+    def display_name(self, species_id: int, form: str | None = None,
+                     region: str | None = None) -> str:
+        """Species name, with Unown's letter appended ("Unown [B]") or the
+        regional form applied ("Alolan Meowth") when this stage has one."""
         name = self.species_name(species_id, self.state.language)
+        if name and regional_forms.form_pokemon_id(species_id, region) is not None:
+            return l10n.t(f"form_{region}", self.state.language).replace("%1", name)
         letter = balance.resolved_unown_form(species_id, form)
         if letter is None:
             return name
         return f"{name or '#' + str(species_id)} [{balance.unown_symbol(letter)}]"
 
     def _sprite(self, species_id: int, shiny: bool, animated: bool = False,
-                form: str | None = None) -> str:
+                form: str | None = None, region: str | None = None) -> str:
         if self.sprites is None:
             return ""
+        variety = regional_forms.form_pokemon_id(species_id, region)
+        if variety is not None:
+            # Regional sprites are filed under the variety's pokemon id. They
+            # postdate the animated Gen V set, so path() serves the static PNG.
+            path = self.sprites.path(variety, animated=animated, shiny=shiny)
+            return str(path) if path else ""
         path = self.sprites.path(
             species_id, animated=animated, shiny=shiny,
             form=balance.resolved_unown_form(species_id, form),
@@ -295,7 +319,8 @@ class CompanionStore:
         mon = self.state.active
         if mon is None:
             return ""
-        return self._sprite(mon.current_id, mon.shows_shiny, animated=True, form=mon.unown_form)
+        return self._sprite(mon.current_id, mon.shows_shiny, animated=True,
+                            form=mon.unown_form, region=mon.regional_form)
 
     def unown_forms(self) -> dict[str, bool]:
         """Owned Unown letters -> whether owned shiny (per letter)."""
@@ -424,9 +449,11 @@ class CompanionStore:
                 evo_line.append(
                     {
                         "species_id": species_id,
-                        "name": self.display_name(species_id, mon.unown_form),
+                        "name": self.display_name(species_id, mon.unown_form,
+                                                  mon.regional_form),
                         "sprite_path": self._sprite(species_id, mon.shows_shiny,
-                                                    form=mon.unown_form),
+                                                    form=mon.unown_form,
+                                                    region=mon.regional_form),
                         "current": index == mon.stage_index,
                         "reached": index <= mon.stage_index,
                     }
@@ -435,7 +462,8 @@ class CompanionStore:
             "stage": "mon",
             "label": "",
             "species_id": mon.current_id,
-            "name": self.display_name(mon.current_id, mon.unown_form),
+            "name": self.display_name(mon.current_id, mon.unown_form, mon.regional_form),
+            "regional_form": mon.regional_form,
             "is_final_form": mon.is_final_form,
             "remaining_tokens": remaining,
             "remaining_text": _compact(remaining),
@@ -655,12 +683,13 @@ class CompanionStore:
         prof, nature = self._individual_for(species_id)
         return prof, species_id, nature
 
-    def _chain(self, species_ids, shiny: bool, form: str | None = None) -> list[dict]:
+    def _chain(self, species_ids, shiny: bool, form: str | None = None,
+               region: str | None = None) -> list[dict]:
         return [
             {
                 "species_id": species_id,
-                "name": self.display_name(species_id, form),
-                "sprite_path": self._sprite(species_id, shiny, form=form),
+                "name": self.display_name(species_id, form, region),
+                "sprite_path": self._sprite(species_id, shiny, form=form, region=region),
             }
             for species_id in species_ids
         ]
@@ -676,7 +705,7 @@ class CompanionStore:
                 "rarity": str(e.rarity),
                 "nature": e.nature,
                 "is_shiny": e.is_shiny,
-                "chain": self._chain(e.chain_order, e.is_shiny, e.unown_form),
+                "chain": self._chain(e.chain_order, e.is_shiny, e.unown_form, e.regional_form),
                 "caught_at": e.caught_at,
                 "raised_text": _duration(e.raised_seconds),
                 "raising": False,
@@ -698,7 +727,8 @@ class CompanionStore:
                     "nature": mon.nature,
                     "is_shiny": mon.shows_shiny,
                     "chain": self._chain(
-                        mon.path_ids[: mon.stage_index + 1], mon.shows_shiny, mon.unown_form
+                        mon.path_ids[: mon.stage_index + 1], mon.shows_shiny, mon.unown_form,
+                        mon.regional_form,
                     ),
                     "caught_at": mon.hatched_at,
                     "raised_text": "",
