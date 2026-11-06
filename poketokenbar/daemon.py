@@ -7,7 +7,7 @@ import time
 from datetime import date
 from pathlib import Path
 
-from . import commands, config, history, recap, state
+from . import api_budget, commands, config, history, recap, state
 from .companion_store import CompanionStore
 from .burn import BurnTracker
 from .limits_source import LimitsSource
@@ -23,7 +23,7 @@ class Daemon:
     def __init__(
         self, state_path: Path, config_path: Path, cache, providers,
         limits_source=None, companion_store=None, notifier=None,
-        burn_tracker=None, status_checker=None,
+        burn_tracker=None, status_checker=None, hermes_home: Path | None = None,
     ) -> None:
         self.state_path = state_path
         self.config_path = config_path
@@ -39,6 +39,9 @@ class Daemon:
         # previous account must not carry over.
         self._account_uuid: str | None = None
         self.status_checker = status_checker
+        # Substitute home for the Hermes databases the API budget reads;
+        # tests point it at tmp_path so they never see the real ~/.hermes.
+        self.hermes_home = hermes_home
         self.spool: Path | None = None
         self.config_values = config.load(config_path)
         self._apply_scan_folders()
@@ -252,6 +255,8 @@ class Daemon:
             catch_log,
         )
 
+        budget_payload = self._api_budget(today_d, errors)
+
         payload = state.build(
             daily_by_provider,
             self.config_values,
@@ -270,6 +275,7 @@ class Daemon:
             recap=recap_payload,
             burn=self.burn.payload() if self.burn is not None else None,
             provider_status=status_payload,
+            api_budget=budget_payload,
             celebration=self.companion_store.celebration if self.companion_store else None,
         )
         state.write(self.state_path, payload)
@@ -278,6 +284,34 @@ class Daemon:
         if self.companion_store is not None:
             self.companion_store.celebration = None
         return payload
+
+    def _api_budget(self, today_d: date, errors: list[str]) -> dict | None:
+        """This month's Anthropic API-key spend against its budget; None
+        when no budget is configured. Never breaks the poll."""
+        try:
+            budget = float(self.config_values.get("api_budget_usd") or 0)
+        except (TypeError, ValueError):
+            budget = 0.0
+        if budget <= 0:
+            return None
+        try:
+            used = api_budget.usage(
+                today_d,
+                self.config_values.get("api_budget_reset_day", 1),
+                home=self.hermes_home,
+                errors=errors,
+            )
+            warn = float(self.config_values.get("warn_threshold", 80))
+            crit = float(self.config_values.get("crit_threshold", 95))
+            block = api_budget.payload(used, budget, warn, crit)
+        except Exception as exc:
+            errors.append(f"api_budget: {exc}")
+            return None
+        if block and self.notifier is not None and self.config_values.get(
+            "limit_notifications", True
+        ):
+            self.notifier.limits({"api_budget": block["percent"]}, warn, crit)
+        return block
 
     def run(self) -> None:
         while True:

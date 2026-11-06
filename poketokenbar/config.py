@@ -36,6 +36,10 @@ DEFAULTS: dict[str, object] = {
     "extra_scan_folders": {},
     # Default recap scope for the Usage tab (week | month | year).
     "recap_period": "month",
+    # Monthly Anthropic API-key budget in USD (spend Hermes bills to
+    # api.anthropic.com). 0 hides the section. Resets on this day of month.
+    "api_budget_usd": 0.0,
+    "api_budget_reset_day": 1,
 }
 
 

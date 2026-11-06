@@ -80,9 +80,12 @@ class Notifier:
             if tier <= previous:
                 continue
             self._limit_tier[kind] = tier
-            label = "5-hour" if kind == "session" else "weekly"
-            self._send(
-                f"{label.capitalize()} limit at {utilization:.0f}%",
-                "Usage is close to the cap." if tier == 1 else "Usage is nearly exhausted.",
-                urgency="critical" if tier == 2 else "normal",
-            )
+            if kind == "api_budget":
+                title = f"Anthropic API budget at {utilization:.0f}%"
+                body = ("Monthly API spend is close to the budget." if tier == 1
+                        else "Monthly API budget is nearly spent.")
+            else:
+                label = "5-hour" if kind == "session" else "weekly"
+                title = f"{label.capitalize()} limit at {utilization:.0f}%"
+                body = "Usage is close to the cap." if tier == 1 else "Usage is nearly exhausted."
+            self._send(title, body, urgency="critical" if tier == 2 else "normal")

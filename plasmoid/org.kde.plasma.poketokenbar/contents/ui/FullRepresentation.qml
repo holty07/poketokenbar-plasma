@@ -17,6 +17,9 @@ PlasmaExtras.Representation {
     // Official Claude usage limits are disabled for now (see daemon.py) — the
     // section below stays hidden rather than showing an empty heading.
     readonly property bool hasLimits: !!(full.limits && (full.limits.session || full.limits.weekly))
+    // Monthly Anthropic API-key spend (Hermes) vs api_budget_usd; empty when unset.
+    readonly property var apiBudget: root.appState && root.appState.api_budget ? root.appState.api_budget : null
+    readonly property bool hasApiBudget: !!(full.apiBudget && full.apiBudget.budget)
     readonly property var companion: root.appState && root.appState.companion
                                      && root.appState.companion.stage
                                      ? root.appState.companion : null
@@ -923,6 +926,66 @@ PlasmaExtras.Representation {
                                             return "";
                                         return i18n("at this rate, full at %1", b.eta_text);
                                     }
+                                }
+                            }
+                        }
+                    }
+
+                    // --- Anthropic API-key budget (Hermes spend) ---
+                    Kirigami.Separator { Layout.fillWidth: true; visible: full.hasApiBudget }
+
+                    PlasmaExtras.Heading {
+                        level: 4
+                        visible: full.hasApiBudget
+                        text: i18n("Anthropic API budget")
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        visible: full.hasApiBudget
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            PlasmaComponents.Label {
+                                text: full.hasApiBudget
+                                      ? i18n("%1 of %2", full.apiBudget.spent_text, full.apiBudget.budget_text)
+                                      : ""
+                            }
+                            Item { Layout.fillWidth: true }
+                            PlasmaComponents.Label {
+                                text: full.hasApiBudget ? Math.round(full.apiBudget.percent) + "%" : ""
+                                color: full.hasApiBudget ? full.levelColor(full.apiBudget.percent) : full.ctpGreen
+                                font.bold: true
+                            }
+                        }
+
+                        CatppuccinProgressBar {
+                            Layout.fillWidth: true
+                            from: 0
+                            to: 100
+                            value: full.hasApiBudget ? Math.min(full.apiBudget.percent, 100) : 0
+                            fillColor: full.hasApiBudget ? full.levelColor(full.apiBudget.percent) : full.ctpGreen
+                            trackColor: full.ctpSurface0
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            PlasmaComponents.Label {
+                                text: full.hasApiBudget ? full.resetIn(full.apiBudget.resets_at) : ""
+                                opacity: 0.7
+                            }
+                            Item { Layout.fillWidth: true }
+                            PlasmaComponents.Label {
+                                opacity: 0.9
+                                color: full.hasApiBudget && full.apiBudget.over_text ? full.ctpRed : Kirigami.Theme.textColor
+                                text: {
+                                    if (!full.hasApiBudget)
+                                        return "";
+                                    if (full.apiBudget.over_text)
+                                        return i18n("%1 over budget", full.apiBudget.over_text);
+                                    return i18n("%1 left · %2 sessions", full.apiBudget.remaining_text,
+                                                full.apiBudget.sessions);
                                 }
                             }
                         }
