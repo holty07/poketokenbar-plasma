@@ -227,11 +227,15 @@ class ClaudeProvider:
         self._cache = cache
         self._home = home
 
+    def _project_roots(self) -> list[Path]:
+        """Built-in transcript roots; overridden by Claude-format forks."""
+        return project_roots(home=self._home)
+
     def scan_entries(self) -> list[Entry]:
         """Every parsed entry across all roots, globally deduplicated."""
         all_entries: list[Entry] = []
         live: set[str] = set()
-        for root in with_extra_roots(project_roots(home=self._home), self.extra_roots):
+        for root in with_extra_roots(self._project_roots(), self.extra_roots):
             for path in jsonl_files(root):
                 try:
                     stat = path.stat()
