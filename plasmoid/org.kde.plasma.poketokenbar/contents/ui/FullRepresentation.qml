@@ -12,6 +12,16 @@ PlasmaExtras.Representation {
 
     readonly property var today: root.appState ? root.appState.today : null
     readonly property var providers: root.appState ? root.appState.providers : ({})
+    // Only providers with actual usage belong in the per-provider token
+    // list; a model that hasn't been used yet would just sit there at zero.
+    readonly property var activeProviders: {
+        if (!full.providers)
+            return [];
+        return Object.keys(full.providers).filter(function (pid) {
+            var p = full.providers[pid];
+            return p && ((p.total_tokens || 0) > 0 || (p.total_cost || 0) > 0);
+        });
+    }
     readonly property var periods: root.appState && root.appState.periods ? root.appState.periods : null
     readonly property var limits: root.appState && root.appState.limits ? root.appState.limits : null
     // Official Claude usage limits are disabled for now (see daemon.py) — the
@@ -807,7 +817,7 @@ PlasmaExtras.Representation {
 
                     // --- per-provider breakdown ---
                     Repeater {
-                        model: full.providers ? Object.keys(full.providers) : []
+                        model: full.activeProviders
 
                         ColumnLayout {
                             Layout.fillWidth: true
