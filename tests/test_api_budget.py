@@ -132,3 +132,80 @@ def test_daemon_omits_budget_when_unset(tmp_path):
         hermes_home=tmp_path,
     )
     assert d.poll_once()["api_budget"] == {}
+
+
+def _add_usage(path, rows):
+    """Hermes's per-call ledger: one row per (session, model, provider, task)."""
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS session_model_usage (session_id TEXT, model TEXT,"
+        " billing_provider TEXT, billing_base_url TEXT, billing_mode TEXT, task TEXT,"
+        " api_call_count INTEGER, input_tokens INTEGER, output_tokens INTEGER,"
+        " cache_read_tokens INTEGER, cache_write_tokens INTEGER, reasoning_tokens INTEGER,"
+        " estimated_cost_usd REAL, actual_cost_usd REAL, cost_status TEXT, cost_source TEXT,"
+        " first_seen REAL, last_seen REAL)"
+    )
+    for row in rows:
+        conn.execute(
+            "INSERT INTO session_model_usage VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                row["session"], row.get("model", "claude-sonnet-5-5"),
+                row.get("provider", "anthropic"), "https://api.anthropic.com", "",
+                row.get("task", ""), 1, 0, row.get("output", 0), 0, 0, 0,
+                row.get("estimated", 0.0), row.get("actual", 0.0), None, None,
+                row["at"], row["at"],
+            ),
+        )
+    conn.commit()
+    conn.close()
+
+
+def test_usage_ledger_counts_anthropic_calls_whatever_the_session_label(tmp_path):
+    db = tmp_path / ".hermes" / "state.db"
+    _make_db(db, [
+        # Started on NVIDIA, later /model'd to Sonnet on the key: the row says nvidia.
+        {"id": "switched", "at": _at(2026, 11, 8), "provider": "nvidia", "estimated": 6.0},
+        {"id": "plain", "at": _at(2026, 11, 9), "estimated": 1.0},
+        {"id": "child", "at": _at(2026, 11, 9), "parent": "plain"},
+    ])
+    _add_usage(db, [
+        {"session": "switched", "at": _at(2026, 11, 8), "estimated": 6.0},
+        {"session": "switched", "at": _at(2026, 11, 8), "provider": "nvidia",
+         "model": "nvidia/nemotron"},
+        {"session": "switched", "at": _at(2026, 11, 8), "task": "background_review",
+         "estimated": 1.5},
+        # 0.0 is Hermes's "no billed figure", not a free call.
+        {"session": "plain", "at": _at(2026, 11, 9), "estimated": 1.0, "actual": 0.0},
+        # A compression child's own calls are not rolled into its parent.
+        {"session": "child", "at": _at(2026, 11, 9), "estimated": 0.25},
+        {"session": "plain", "at": _at(2026, 10, 30), "estimated": 9.0},  # last month
+        {"session": "plain", "at": _at(2026, 11, 9), "provider": "openrouter",
+         "task": "vision", "estimated": 4.0},
+    ])
+    used = api_budget.usage(date(2026, 11, 16), home=tmp_path)
+    assert round(used.spent, 2) == 8.75
+    assert used.sessions == 3
+
+
+def test_usage_ledger_prefers_billed_cost_and_prices_unpriced_rows(tmp_path):
+    db = tmp_path / ".hermes" / "state.db"
+    _make_db(db, [{"id": "a", "at": _at(2026, 11, 6), "provider": "nvidia"}])
+    _add_usage(db, [
+        {"session": "a", "at": _at(2026, 11, 6), "estimated": 9.0, "actual": 2.0},
+        {"session": "a", "at": _at(2026, 11, 6), "model": "claude-opus-5-5",
+         "output": 1_000_000},
+    ])
+    assert round(api_budget.usage(date(2026, 11, 6), home=tmp_path).spent, 2) == 22.0
+
+
+def test_ledger_is_authoritative_over_session_totals(tmp_path):
+    db = tmp_path / ".hermes" / "state.db"
+    # The session row is unpriced (our pricing would say $20); the ledger
+    # already holds the same call, so it must not be counted twice.
+    _make_db(db, [{"id": "a", "at": _at(2026, 11, 10), "model": "claude-opus-5-5",
+                   "output": 1_000_000}])
+    _add_usage(db, [{"session": "a", "at": _at(2026, 11, 10), "model": "claude-opus-5-5",
+                     "output": 1_000_000}])
+    used = api_budget.usage(date(2026, 11, 16), home=tmp_path)
+    assert round(used.spent, 2) == 20.0
+    assert used.sessions == 1

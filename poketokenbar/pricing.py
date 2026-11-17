@@ -36,7 +36,7 @@ TABLE: dict[str, ModelRate] = {
     "claude-opus-5": per_million(5, 25, 6.25, 0.5),
     "claude-opus-5-5": per_million(4, 20, 5, 0.2),
     "claude-sonnet-5": per_million(2, 10, 2.5, 0.2),
-    "claude-sonnet-5-5": per_million(2, 10, 2.5, 0.2),
+    "claude-sonnet-5-5": per_million(2, 10, 2.5, 0.1),
     "claude-fable-5": per_million(10, 50, 12.5, 1.0),
     "claude-fable-5-1": per_million(10, 50, 12.5, 0.25),
     "claude-opus-4-20250514": per_million(15, 75, 18.75, 1.5),
