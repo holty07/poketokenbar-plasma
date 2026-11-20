@@ -65,6 +65,12 @@ class Notifier:
         if events.graduated is not None:
             self._send("Graduated!", f"{label} joined your Pokedex.")
 
+    def dex_completions(self, badges: list[tuple[str, str]]) -> None:
+        """One notification per newly earned Pokédex badge (#442).
+        `badges` holds (title, body) pairs already in the UI language."""
+        for title, body in badges:
+            self._send(title, body)
+
     def limits(self, windows: dict[str, float], warn: float, crit: float) -> None:
         """Announce a window crossing warn or crit, once per crossing.
 

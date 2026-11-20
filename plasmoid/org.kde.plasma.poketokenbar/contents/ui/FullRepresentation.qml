@@ -36,6 +36,14 @@ PlasmaExtras.Representation {
     readonly property var shopItems: root.appState && root.appState.shop ? root.appState.shop : []
     readonly property var bagItems: root.appState && root.appState.bag ? root.appState.bag : []
     readonly property var dexItems: root.appState && root.appState.dex ? root.appState.dex : []
+    // Per-generation completion chips and earned medals (upstream #442).
+    readonly property var dexProgress: root.appState && root.appState.dex_progress
+                                       ? root.appState.dex_progress : ({})
+    readonly property var dexRegions: full.dexProgress.regions || []
+    // National/Unown medals sit in the header; region medals show on their chip.
+    readonly property var dexMedals: (full.dexProgress.badges || []).filter(function (b) {
+        return b.kind !== "region" && b.kind !== "regionShiny";
+    })
     readonly property var catchLog: root.appState && root.appState.catch_log ? root.appState.catch_log : []
     readonly property var rarityCounts: root.appState && root.appState.rarity_counts
                                         ? root.appState.rarity_counts : ({})
@@ -62,6 +70,7 @@ PlasmaExtras.Representation {
                                   : false
 
     property string rarityFilter: ""
+    property string regionFilter: ""   // region key; Pokédex only
     property int dexPage: 0
 
     // Per-item UI state lives here, not in the delegates: state.json is
@@ -389,6 +398,7 @@ PlasmaExtras.Representation {
     readonly property var logSortModes: [i18n("Newest"), i18n("Oldest"), i18n("No. ↑"),
                                          i18n("Name A–Z"), i18n("Rarity")]
     readonly property bool filtering: full.dexSearch !== "" || full.shinyOnly || full.rarityFilter !== ""
+                                      || (collectionTabs.currentIndex === 0 && full.regionFilter !== "")
 
     // Case- and accent-insensitive, shared by both lists, so "pokemon"
     // finds "Pokémon"; "#25" or "25" matches by number.
@@ -412,13 +422,26 @@ PlasmaExtras.Representation {
         full.dexSearch = "";
         full.shinyOnly = false;
         full.rarityFilter = "";
+        full.regionFilter = "";
         full.dexPage = 0;
+    }
+
+    function inRegion(speciesId) {
+        if (!full.regionFilter)
+            return true;
+        for (var i = 0; i < full.dexRegions.length; i++) {
+            var r = full.dexRegions[i];
+            if (r.key === full.regionFilter)
+                return speciesId >= r.first && speciesId <= r.last;
+        }
+        return true;
     }
 
     function filteredDex() {
         var out = full.dexItems.filter(function (d) {
             return (!full.rarityFilter || d.rarity === full.rarityFilter)
                 && (!full.shinyOnly || d.is_shiny)
+                && full.inRegion(d.species_id)
                 && full.matchesSearch(d.name, d.species_id);
         });
         var byName = function (a, b) { return full.fold(a.name).localeCompare(full.fold(b.name)); };
@@ -1404,9 +1427,80 @@ PlasmaExtras.Representation {
                         visible: collectionTabs.currentIndex === 0
                         spacing: Kirigami.Units.smallSpacing
 
-                        PlasmaComponents.Label {
-                            text: i18n("%1 species", full.dexItems.length)
-                            font.bold: true
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            PlasmaComponents.Label {
+                                text: i18n("%1 species", full.dexItems.length)
+                                font.bold: true
+                            }
+
+                            PlasmaComponents.Label {
+                                visible: !!full.dexProgress.national
+                                text: full.dexProgress.national
+                                      ? full.dexProgress.national.label + " "
+                                        + full.dexProgress.national.owned + "/"
+                                        + full.dexProgress.national.total
+                                      : ""
+                                opacity: 0.7
+                            }
+
+                            Item { Layout.fillWidth: true }
+
+                            // earned National / Unown medals (#442)
+                            Repeater {
+                                model: full.dexMedals
+
+                                Rectangle {
+                                    radius: height / 2
+                                    color: Qt.rgba(full.ctpYellow.r, full.ctpYellow.g, full.ctpYellow.b, 0.14)
+                                    border.color: Qt.rgba(full.ctpYellow.r, full.ctpYellow.g, full.ctpYellow.b, 0.5)
+                                    border.width: 1
+                                    implicitWidth: medalLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
+                                    implicitHeight: medalLabel.implicitHeight + 2
+
+                                    PlasmaComponents.Label {
+                                        id: medalLabel
+                                        anchors.centerIn: parent
+                                        text: modelData.emoji
+                                    }
+
+                                    HoverHandler { id: medalHover }
+                                    QQC2.ToolTip.text: modelData.label
+                                    QQC2.ToolTip.visible: medalHover.hovered
+                                }
+                            }
+                        }
+
+                        // per-generation progress chips, click to filter (#442)
+                        Flow {
+                            Layout.fillWidth: true
+                            visible: full.dexRegions.length > 0
+                            spacing: Kirigami.Units.smallSpacing
+
+                            Repeater {
+                                model: full.dexRegions
+
+                                QQC2.Button {
+                                    checkable: true
+                                    checked: full.regionFilter === modelData.key
+                                    // A generation with nothing owned has nothing to show.
+                                    enabled: modelData.owned > 0
+                                    text: (modelData.shiny_complete ? "✨ "
+                                           : modelData.complete ? "🏅 " : "")
+                                          + modelData.name + " " + modelData.owned + "/" + modelData.total
+                                    QQC2.ToolTip.text: modelData.badge_label
+                                                       || i18n("%1 shiny", modelData.shiny_owned)
+                                    QQC2.ToolTip.visible: hovered
+                                    onClicked: {
+                                        full.regionFilter = full.regionFilter === modelData.key
+                                                            ? "" : modelData.key;
+                                        full.dexPage = 0;
+                                        full.selectedSpecies = -1;
+                                    }
+                                }
+                            }
                         }
 
                         // ---- entry detail (opened by clicking a sprite, #394) ----

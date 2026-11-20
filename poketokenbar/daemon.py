@@ -227,6 +227,15 @@ class Daemon:
                         else None,
                     )
                     self.companion_store.last_events = None
+                # Drained every poll, so badges earned while notifications
+                # are off are not announced later in a burst (#442).
+                dex_badges = self.companion_store.take_dex_badges()
+                if self.notifier is not None and self.config_values.get(
+                    "companion_notifications", True
+                ):
+                    self.notifier.dex_completions(
+                        [self.companion_store.dex_notification(k) for k in dex_badges]
+                    )
             except Exception as exc:
                 # The companion is cosmetic; never let it break the numbers.
                 errors.append(f"companion: {exc}")
@@ -266,6 +275,8 @@ class Daemon:
             shop_payload=self.companion_store.shop_payload() if self.companion_store else None,
             bag_payload=self.companion_store.bag_payload() if self.companion_store else None,
             dex_payload=self.companion_store.dex_payload() if self.companion_store else None,
+            dex_progress=self.companion_store.dex_progress_payload()
+            if self.companion_store else None,
             catch_log=catch_log,
             rarity_counts=self.companion_store.rarity_counts() if self.companion_store else None,
             catch_counts=self.companion_store.catch_rarity_counts() if self.companion_store else None,
