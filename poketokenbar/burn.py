@@ -92,5 +92,10 @@ class BurnTracker:
                     round(forecast.minutes_to_full) if forecast.minutes_to_full else None
                 ),
                 "eta_text": forecast.eta_text,
+                # The UI compares this against the window's resets_at and
+                # formats a weekday for the weekly window.
+                "eta_epoch": (
+                    round(forecast.eta_epoch) if forecast.eta_epoch is not None else None
+                ),
             }
         return out

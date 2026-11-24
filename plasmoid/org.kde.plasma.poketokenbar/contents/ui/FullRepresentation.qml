@@ -189,6 +189,25 @@ PlasmaExtras.Representation {
         return i18n("resets in %1m", mins);
     }
 
+    // When a window will hit 100% at the current burn rate, and whether that
+    // lands before or after the window resets. The weekly window can be days
+    // out, so it names the weekday too. afterReset is null when the reset time
+    // is unknown (or the daemon predates eta_epoch).
+    function burnForecast(kind, resetsAt) {
+        var b = full.burn[kind];
+        if (!b || !b.eta_text)
+            return null;
+        if (!b.eta_epoch)
+            return { "when": b.eta_text, "afterReset": null };
+        var eta = new Date(b.eta_epoch * 1000);
+        var when = kind === "weekly"
+                   ? Qt.formatDateTime(eta, "ddd HH:mm")
+                   : Qt.formatTime(eta, "HH:mm");
+        var resetMs = resetsAt ? new Date(resetsAt).getTime() : NaN;
+        return { "when": when,
+                 "afterReset": isNaN(resetMs) ? null : eta.getTime() > resetMs };
+    }
+
     function grouped(n) {
         return n ? n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",") : "0";
     }
@@ -927,15 +946,18 @@ PlasmaExtras.Representation {
                                 Item { Layout.fillWidth: true }
 
                                 PlasmaComponents.Label {
+                                    readonly property var forecast:
+                                        full.burnForecast(modelData.kind, modelData.w.resets_at)
                                     visible: text.length > 0
                                     opacity: 0.9
-                                    color: full.ctpPeach
-                                    text: {
-                                        var b = full.burn[modelData.kind];
-                                        if (!b || !b.eta_text)
-                                            return "";
-                                        return i18n("at this rate, full at %1", b.eta_text);
-                                    }
+                                    color: forecast && forecast.afterReset ? full.ctpGreen
+                                                                           : full.ctpPeach
+                                    text: !forecast ? ""
+                                          : forecast.afterReset === null
+                                            ? i18n("at this rate, full at %1", forecast.when)
+                                          : forecast.afterReset
+                                            ? i18n("at this rate, full at %1 · after reset", forecast.when)
+                                            : i18n("at this rate, full at %1 · before reset", forecast.when)
                                 }
                             }
                         }

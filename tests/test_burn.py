@@ -106,3 +106,15 @@ def test_payload_only_includes_windows_with_data():
     payload = t.payload()
     assert "session" in payload
     assert "weekly" not in payload
+
+
+def test_payload_carries_eta_epoch_for_reset_comparison():
+    c = Clock()
+    t = BurnTracker(c)
+    for pct in (10.0, 20.0, 30.0):
+        t.record("weekly", pct)
+        c.advance_minutes(5)
+    entry = t.payload()["weekly"]
+    forecast = t.forecast("weekly")
+    assert entry["eta_epoch"] == round(forecast.eta_epoch)
+    assert entry["eta_epoch"] > c()
