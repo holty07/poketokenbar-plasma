@@ -140,6 +140,10 @@ class CompanionState:
     # the dip below 100% was never observed (asleep across the reset, #334).
     candy_window_epoch: dict[str, str] = field(default_factory=dict)
     candy_feature_seeded: bool = False
+    # Dex-completion badge keys already announced (#442), so a restart never
+    # re-notifies. Seeded once so pre-feature completions stay quiet.
+    notified_dex_completions: set[str] = field(default_factory=set)
+    dex_completions_seeded: bool = False
     # Difficulty actually applied to this save. Kept here, not only in config,
     # so a change can rescale banked progress exactly once.
     growth_difficulty: float = balance.DEFAULT_DIFFICULTY

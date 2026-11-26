@@ -15,6 +15,7 @@ from pathlib import Path
 from . import (
     balance,
     companion,
+    dex_progress,
     l10n,
     pokeapi,
     profile,
@@ -56,7 +57,11 @@ class CompanionStore:
         # notification fires immediately but the banner needs a render pass.
         self.celebration: dict | None = None
         self.last_events: companion.GrowthEvents | None = None
+        # Dex badges earned since the daemon last asked (#442). Drained by
+        # take_dex_badges() so the notification fires once.
+        self.pending_dex_badges: list[str] = []
         self._migrate_profiles()
+        self._seed_dex_completions()
 
     def _migrate_profiles(self) -> None:
         """One-time, offline-safe profile migration for pre-#264 saves, with a
@@ -800,7 +805,103 @@ class CompanionStore:
         incoming.last_date = self.state.last_date
         companion.ensure_profiles(incoming)
         self.state = incoming
+        # A save from before #442 must not announce its old completions.
+        self._seed_dex_completions()
         self._persist()
+
+    # --- per-generation dex completion (#442) --------------------------------
+
+    def _dex_owned(self) -> dict[int, bool]:
+        return self.owned_species()
+
+    def earned_dex_badges(self) -> list[str]:
+        """Badges earned right now. Derived, never stored: ownership only grows."""
+        return dex_progress.earned_badges(self._dex_owned(), len(self.unown_forms()))
+
+    def _seed_dex_completions(self) -> None:
+        """First run with this feature (or a legacy import): record badges
+        already earned as announced *without* notifying — finishing a region
+        months ago must not produce a notification burst now."""
+        if self.state.dex_completions_seeded:
+            return
+        self.state.dex_completions_seeded = True
+        self.state.notified_dex_completions |= set(self.earned_dex_badges())
+
+    def _check_dex_completions(self) -> None:
+        """Queue every badge earned since the last check. Runs on each
+        persist, so the recorded keys are written in the same save."""
+        if not self.state.dex_completions_seeded:
+            return
+        newly = dex_progress.newly_earned(
+            self.earned_dex_badges(), self.state.notified_dex_completions
+        )
+        for key in newly:
+            self.state.notified_dex_completions.add(key)
+            self.pending_dex_badges.append(key)
+
+    def take_dex_badges(self) -> list[str]:
+        badges, self.pending_dex_badges = self.pending_dex_badges, []
+        return badges
+
+    def dex_badge_text(self, key: str, language: str | None = None) -> tuple[str, str]:
+        """(label, notification body) for a badge key, in the save's language."""
+        language = language or self.state.language
+        kind = dex_progress.badge_kind(key)
+        region = dex_progress.badge_region(key)
+        name = l10n.t(f"region_{region}", language) if region else ""
+        label = l10n.t(f"badge_{kind}", language).format(region=name)
+        body = l10n.t(f"notif_{kind}", language).format(region=name)
+        return label, body
+
+    def dex_notification(self, key: str) -> tuple[str, str]:
+        """(title, body) for a newly earned badge's desktop notification."""
+        label, body = self.dex_badge_text(key)
+        emoji = dex_progress.EMOJI.get(dex_progress.badge_kind(key), "🏅")
+        return f"{emoji} {label}", body
+
+    def dex_progress_payload(self) -> dict:
+        """Region chips and earned medals for the Pokédex header."""
+        owned = self._dex_owned()
+        language = self.state.language
+        regions = []
+        for c in dex_progress.region_completions(owned):
+            first, last = dex_progress.region_range(c.region)
+            regions.append({
+                "key": c.region,
+                "name": l10n.t(f"region_{c.region}", language),
+                "first": first,
+                "last": last,
+                "owned": c.owned,
+                "shiny_owned": c.shiny_owned,
+                "total": c.total,
+                "complete": c.is_complete,
+                "shiny_complete": c.is_shiny_complete,
+                # Tooltip for a finished chip; the shiny tier outranks the plain one.
+                "badge_label": self.dex_badge_text(
+                    f"regionShiny.{c.region}" if c.is_shiny_complete
+                    else f"region.{c.region}", language
+                )[0] if c.is_complete else "",
+            })
+        n_owned, n_shiny, n_total = dex_progress.national_progress(owned)
+        badges = []
+        for key in self.earned_dex_badges():
+            kind = dex_progress.badge_kind(key)
+            badges.append({
+                "key": key,
+                "kind": kind,
+                "emoji": dex_progress.EMOJI.get(kind, "🏅"),
+                "label": self.dex_badge_text(key, language)[0],
+            })
+        return {
+            "regions": regions,
+            "national": {
+                "label": l10n.t("dex_national", language),
+                "owned": n_owned,
+                "shiny_owned": n_shiny,
+                "total": n_total,
+            },
+            "badges": badges,
+        }
 
     def restore_snapshot(self, snapshot_id: str) -> str:
         # Read and validate first: at the retention limit the safety snapshot
@@ -811,4 +912,5 @@ class CompanionStore:
         return "backup restored"
 
     def _persist(self) -> None:
+        self._check_dex_completions()
         save.save(self.state, self.save_path)
