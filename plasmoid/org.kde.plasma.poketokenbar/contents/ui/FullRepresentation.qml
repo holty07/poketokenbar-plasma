@@ -2256,8 +2256,8 @@ PlasmaExtras.Representation {
 
                     // Pokémon graduated during this period.
                     Repeater {
-                        model: full.recap.graduated
-                        visible: full.recap.graduated.length > 0
+                        model: full.recap.graduated || []
+                        visible: (full.recap.graduated || []).length > 0
 
                         ColumnLayout {
                             Layout.fillWidth: true
